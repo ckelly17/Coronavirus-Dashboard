@@ -1,0 +1,109 @@
+---
+title: "covid_script"
+author: "Conor Kelly"
+date: "4/8/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+setwd("C:/Users/ckelly/Documents/Covid-Personal - Copy")
+
+## load packages
+library(readxl)
+library(writexl)
+library(readr)
+library(openxlsx)
+library(rio)
+
+######################################################
+# COUNTIES
+######################################################
+
+## set GitHub target
+counties <- "https://raw.githubusercontent.com/nytimes/covid-19-data/master/us-counties.csv"
+
+## read data into R
+nyt_covid <- read_csv(url(counties))
+county_pop <- read_csv("co-est2019-alldata.csv", col_names = TRUE, col_types = cols(.default = "c"))
+county_codes <- read_excel("all-geocodes-v2018.xlsx", col_names = TRUE, range = "A5:G43852")
+
+## subset data for population estimates and clean varnames
+varnames <- c("SUMLEV", "REGION", "DIVISION","STATE", "COUNTY", "STNAME", "CTYNAME", "POPESTIMATE2019")
+county_pop <- county_pop[varnames]
+lowernames <- tolower(colnames(county_pop))
+names(county_pop) <- lowernames
+
+## generate population estimates for counties by adding FIPS code to pop file
+county_pop$fips <- paste0(county_pop$state, county_pop$county)
+county_pop$fips <- as.numeric(county_pop$fips)
+
+## destring NYT fips
+nyt_covid$fips <- as.numeric(nyt_covid$fips) 
+
+## merge county_pop to NYT data
+covid_data <- inner_join(county_pop, nyt_covid, by = "fips")
+
+## set population variable
+covid_data <- covid_data %>% 
+  mutate(pop = as.numeric(popestimate2019),
+        caseper1k = cases/pop*1000, 
+        deathper1k = deaths/pop*1000)
+
+## get right variable names
+varnames <- c("fips", "stname", "ctyname","pop", "cases", "deaths", "caseper1k", "deathper1k", "date")
+covid_data <- covid_data[varnames]
+
+## make sure fips codes have zero in front if need be
+covid_data$fix_fips <- ifelse(covid_data$fips < 10000, 1, 0)
+covid_data$fips <- as.character(covid_data$fips)
+covid_data$fips <- ifelse(covid_data$fix_fips == 1, paste0("0", covid_data$fips),covid_data$fips)
+
+## export to CSV
+export(covid_data, "counties-tableau.csv")
+
+######################################################
+# STATES
+######################################################
+
+## set GitHub target
+states <- "https://raw.githubusercontent.com/nytimes/covid-19-data/master/us-states.csv"
+
+## read data into R
+nyt_covid_states <- read_csv(url(states))
+county_pop <- read_csv("co-est2019-alldata.csv", col_names = TRUE, col_types = cols(.default = "c"))
+
+## subset data for population estimates and clean varnames
+varnames <- c("SUMLEV", "REGION", "DIVISION","STATE", "COUNTY", "STNAME", "CTYNAME", "POPESTIMATE2019")
+county_pop <- county_pop[varnames]
+lowernames <- tolower(colnames(county_pop))
+names(county_pop) <- lowernames
+
+## generate population estimates for counties by adding FIPS code to pop file
+county_pop$fips <- county_pop$state
+
+## merge county_pop to NYT data
+covid_data_states <- inner_join(county_pop, nyt_covid_states, by = "fips")
+
+## arrange
+covid_data_states <- covid_data_states %>%
+  arrange(stname,date)
+
+## drop counties
+covid_data_states <- covid_data_states %>% 
+  filter(ctyname == stname)
+
+## set population variables
+covid_data_states <- covid_data_states %>% 
+  mutate(pop = as.numeric(popestimate2019),
+        caseper1k = cases/pop*1000, 
+        deathper1k = deaths/pop*1000)
+
+## get right variable names
+varnames <- c("fips", "stname","pop", "cases", "deaths", "caseper1k", "deathper1k", "date")
+covid_data_states <- covid_data_states[varnames]
+
+## export to CSV
+export(covid_data_states, "states-tableau.csv")
+
+```
