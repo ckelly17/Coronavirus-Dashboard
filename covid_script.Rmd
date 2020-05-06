@@ -15,6 +15,9 @@ library(writexl)
 library(readr)
 library(openxlsx)
 library(rio)
+library(anytime)
+library(zoo)
+library(pracma)
 
 ######################################################
 # COUNTIES
@@ -59,6 +62,20 @@ covid_data$fix_fips <- ifelse(covid_data$fips < 10000, 1, 0)
 covid_data$fips <- as.character(covid_data$fips)
 covid_data$fips <- ifelse(covid_data$fix_fips == 1, paste0("0", covid_data$fips),covid_data$fips)
 
+## calculate new cases and new deaths
+covid_data <- covid_data %>%
+  arrange(stname, ctyname, date) %>%
+  group_by(stname, ctyname) %>%
+  mutate(n_dates = n()) %>%
+  filter(n_dates >=8) %>%
+  mutate(n_dates = n(),
+         cases_prior = lag(cases),
+         new_cases = ifelse(is.na(cases - cases_prior), cases, cases - cases_prior),
+         deaths_prior = lag(deaths),
+         new_deaths = ifelse(is.na(deaths - deaths_prior), deaths, deaths - deaths_prior),
+         pos_7d_avg = movavg(new_cases, 7, type = "s"),
+         death_7d_avg = movavg(new_deaths, 7, type = "s"))
+        
 ## export to CSV
 export(covid_data, "counties-tableau.csv")
 
@@ -103,7 +120,38 @@ covid_data_states <- covid_data_states %>%
 varnames <- c("fips", "stname","pop", "cases", "deaths", "caseper1k", "deathper1k", "date")
 covid_data_states <- covid_data_states[varnames]
 
+
+######################################################
+# COVID TRACKING PROJECT
+######################################################
+
+# read data
+tracking <- read_csv("https://covidtracking.com/api/v1/states/daily.csv")
+
+# select columns
+tracking <- tracking %>%
+  dplyr::select(date, state, fips, positive, negative, hospitalizedIncrease, totalTestResultsIncrease, positiveIncrease, negativeIncrease, deathIncrease, totalTestResults)
+
+# deal with dates
+tracking$date <- as.character(tracking$date)
+tracking$date <- anydate(tracking$date)
+
+# get rolling averages
+tracking <- tracking %>%
+  mutate(pct_positive = positiveIncrease/totalTestResultsIncrease) %>%
+  arrange(state, date) %>%
+  group_by(state) %>%
+  mutate(pos_7d_avg = movavg(positiveIncrease, 7, type = "s"),
+         death_7d_avg = movavg(deathIncrease, 7, type = "s"),
+         test_7d_avg = movavg(totalTestResultsIncrease, 7, type = "s"),
+         totaltests_7d = test_7d_avg*7,
+         totalpos_7d = pos_7d_avg*7)
+
+# merge with NYT states
+covid_data_states <- right_join(covid_data_states, tracking, by = c("fips", "date"))
+
 ## export to CSV
 export(covid_data_states, "states-tableau.csv")
+
 
 ```
