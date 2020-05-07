@@ -8,13 +8,11 @@ author: "Conor Kelly"
 setwd("C:/Users/ckelly/Documents/Covid-Personal - Copy")
 
 ## load packages
+library(tidyverse)
 library(readxl)
-library(writexl)
 library(readr)
-library(openxlsx)
 library(rio)
 library(anytime)
-library(zoo)
 library(pracma)
 
 ######################################################
