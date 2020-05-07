@@ -1,8 +1,6 @@
 ---
 title: "covid_script"
 author: "Conor Kelly"
-date: "4/8/2020"
-output: html_document
 ---
 
 ```{r setup, include=FALSE}
@@ -45,7 +43,12 @@ county_pop$fips <- as.numeric(county_pop$fips)
 nyt_covid$fips <- as.numeric(nyt_covid$fips) 
 
 ## merge county_pop to NYT data
-covid_data <- inner_join(county_pop, nyt_covid, by = "fips")
+covid_data <- right_join(county_pop, nyt_covid, by = "fips")
+
+## deal with unmerged obs
+covid_data <- covid_data %>%
+  mutate(ctyname = ifelse(is.na(ctyname), county.y, ctyname),
+         stname = ifelse(is.na(stname), state.y, stname))
 
 ## set population variable
 covid_data <- covid_data %>% 
@@ -108,7 +111,7 @@ names(county_pop) <- lowernames
 county_pop$fips <- county_pop$state
 
 ## merge county_pop to NYT data
-covid_data_states <- inner_join(county_pop, nyt_covid_states, by = "fips")
+covid_data_states <- right_join(county_pop, nyt_covid_states, by = "fips")
 
 ## arrange
 covid_data_states <- covid_data_states %>%
@@ -163,8 +166,70 @@ tracking <- tracking %>%
          totalpos_7d = pos_7d_avg*7)
 
 # merge with NYT states
-covid_data_states <- inner_join(covid_data_states, tracking, by = c("fips", "date"))
+covid_data_states <- right_join(covid_data_states, tracking, by = c("fips", "date"))
 
+# add state names to tracking, since it tends to be one day ahead of NYT, can't rely on names there
+covid_data_states <- covid_data_states %>%
+  mutate(state = if_else(state == "AL", "Alabama", state),
+         state = if_else(state == "AK", "Alaska", state),
+         state = if_else(state == "AZ", "Arizona", state),
+         state = if_else(state == "AR", "Arkansas", state),
+         state = if_else(state == "CA", "California", state),
+         state = if_else(state == "CO", "Colorado", state),
+         state = if_else(state == "CT", "Connecticut", state),
+         state = if_else(state == "DE", "Delaware", state),
+         state = if_else(state == "DC", "District of Columbia", state),
+         state = if_else(state == "FL", "Florida", state),
+         state = if_else(state == "GA", "Georgia", state),
+         state = if_else(state == "HI", "Hawaii", state),
+         state = if_else(state == "ID", "Idaho", state),
+         state = if_else(state == "IL", "Illinois", state),
+         state = if_else(state == "IN", "Indiana", state),
+         state = if_else(state == "IA", "Iowa", state),
+         state = if_else(state == "KS", "Kansas", state),
+         state = if_else(state == "KY", "Kentucky", state),
+         state = if_else(state == "LA", "Louisiana", state),
+         state = if_else(state == "ME", "Maine", state),
+         state = if_else(state == "MD", "Maryland", state),
+         state = if_else(state == "MA", "Massachusetts", state),
+         state = if_else(state == "MI", "Michigan", state),
+         state = if_else(state == "MN", "Minnesota", state),
+         state = if_else(state == "MS", "Mississippi", state),
+         state = if_else(state == "MO", "Missouri", state),
+         state = if_else(state == "MT", "Montana", state),
+         state = if_else(state == "NE", "Nebraska", state),
+         state = if_else(state == "NV", "Nevada", state),
+         state = if_else(state == "NH", "New Hampshire", state),
+         state = if_else(state == "NJ", "New Jersey", state),
+         state = if_else(state == "NM", "New Mexico", state),
+         state = if_else(state == "NY", "New York", state),
+         state = if_else(state == "NC", "North Carolina", state),
+         state = if_else(state == "ND", "North Dakota", state),
+         state = if_else(state == "OH", "Ohio", state),
+         state = if_else(state == "OK", "Oklahoma ", state),
+         state = if_else(state == "OR", "Oregon", state),
+         state = if_else(state == "PA", "Pennsylvania", state),
+         state = if_else(state == "PR", "Puerto Rico", state),
+         state = if_else(state == "RI", "Rhode Island ", state),
+         state = if_else(state == "SC", "South Carolina", state),
+         state = if_else(state == "SD", "South Dakota", state),
+         state = if_else(state == "TN", "Tennessee", state),
+         state = if_else(state == "TX", "Texas", state),
+         state = if_else(state == "UT", "Utah", state),
+         state = if_else(state == "VT", "Vermont", state),
+         state = if_else(state == "VA", "Virginia", state),
+         state = if_else(state == "PR", "Puerto Rico", state),
+         state = if_else(state == "VI", "Virgin Islands", state),
+         state = if_else(state == "WA", "Washington", state),
+         state = if_else(state == "WV", "West Virginia", state),
+         state = if_else(state == "WI", "Wisconsin", state),
+         state = if_else(state == "WY", "Wyoming", state),
+         state = if_else(state == "WA", "Washington", state),
+         state = if_else(state == "WA", "Washington", state),
+         state = if_else(state == "AS", "American Samoa", state),
+         state = if_else(state == "GU", "Guam", state),
+         state = if_else(state == "MP", "Northern Marianas", state))
+         
 # check uniqueness
 nrow(covid_data_states)
 nrow(distinct(covid_data_states))/nrow(covid_data_states)
