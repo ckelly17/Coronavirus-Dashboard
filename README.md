@@ -3,4 +3,4 @@ Building a Tableau dashboard based on New York Times COVID-19 cases data by U.S.
 
 https://public.tableau.com/views/COVIDDashboard-Public/Introduction?:display_count=y&:origin=viz_share_link
 
-![Dashboard](link-to-image)
+![Dashboard](https://github.com/ckelly17/Coronavirus-Dashboard/blob/master/Annotation%202020-05-07%20131453.png)
