@@ -5,7 +5,7 @@ author: "Conor Kelly"
 
 ```{r setup, include=FALSE}
 
-setwd("C:/Users/ckelly/Documents/Covid-Personal - Copy")
+setwd()
 
 ## load packages
 
