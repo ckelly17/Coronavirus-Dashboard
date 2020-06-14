@@ -8,12 +8,14 @@ author: "Conor Kelly"
 setwd("C:/Users/ckelly/Documents/Covid-Personal - Copy")
 
 ## load packages
+
 library(tidyverse)
 library(readxl)
 library(readr)
 library(rio)
 library(anytime)
 library(pracma)
+library(lubridate)
 
 ######################################################
 # COUNTIES
@@ -41,7 +43,7 @@ county_pop$fips <- paste0(county_pop$state, county_pop$county)
 county_pop$fips <- as.numeric(county_pop$fips)
 
 msa <- msa %>%
-  dplyr::select(fipscounty, cbsaname, msaname) %>%
+  select(fipscounty, cbsaname, msaname) %>%
   rename(fips = fipscounty) %>%
   mutate(fips = as.numeric(fips))
   
@@ -163,7 +165,7 @@ tracking <- read_csv("https://covidtracking.com/api/v1/states/daily.csv")
 
 # select columns
 tracking <- tracking %>%
-  dplyr::select(date, state, fips, positive, negative, hospitalizedIncrease, hospitalizedCurrently, totalTestResultsIncrease, positiveIncrease, negativeIncrease, deathIncrease, totalTestResults, death)
+  select(date, state, fips, positive, negative, hospitalizedIncrease, hospitalizedCurrently, totalTestResultsIncrease, positiveIncrease, negativeIncrease, deathIncrease, totalTestResults, death)
 
 # deal with dates
 tracking$date <- as.character(tracking$date)
@@ -183,6 +185,7 @@ tracking <- tracking %>%
          lstwk_death_7d_avg = lag(death_7d_avg, n = 7),
          lstwk_pos_7d_avg = lag(pos_7d_avg, n = 7),
          lstwk_test_7d_avg = lag(test_7d_avg, n = 7),
+         changeHosp = hospitalizedCurrently -  lag(hospitalizedCurrently, n = 1),
          deaths_incr_week = ((death_7d_avg - lstwk_death_7d_avg)/lstwk_death_7d_avg),
          pos_incr_week = ((pos_7d_avg - lstwk_pos_7d_avg)/lstwk_pos_7d_avg),
          tests_incr_week = ((test_7d_avg - lstwk_test_7d_avg)/lstwk_test_7d_avg),
@@ -263,8 +266,8 @@ covid_data_states <- covid_data_states %>%
         caseper1k = positive/pop*1000, 
         deathper1k = deaths/pop*1000,
         max_caseper1k = max(caseper1k),
-        state_tier = ifelse(max_caseper1k > 15, "Tier 1", ifelse((max_caseper1k > 9), "Tier 2", ifelse(max_caseper1k > 3, "Tier 3","Tier 4"))),
-        state_tier_moving = ifelse(caseper1k > 15, "15 or more cases per 1k", ifelse((caseper1k > 9), "9-15 cases per 1k", ifelse(caseper1k > 3, "3-9 cases per 1k","Less than 3 cases per 1k"))))
+        state_tier = ifelse(max_caseper1k > 15, "Tier 1", ifelse((max_caseper1k > 10), "Tier 2", ifelse(max_caseper1k > 5, "Tier 3","Tier 4"))),
+        state_tier_moving = ifelse(caseper1k > 15, "15 or more cases per 1k", ifelse((caseper1k > 10), "10-15 cases per 1k", ifelse(caseper1k > 5, "5-9 cases per 1k","Less than 5 cases per 1k"))))
 
 ## has your state peaked?
 covid_data_states <- covid_data_states %>%
@@ -301,14 +304,10 @@ covid_data_states <- covid_data_states %>%
 
 ## is there hospitalization data for this state?
 covid_data_states <- covid_data_states %>%
-  mutate(HospAprFlag = ifelse(hosp_7d_avg > 0 & date == "2020-04-07", 1, 0),
-          HospAprFlag = ifelse(is.na(HospAprFlag), 0, HospAprFlag),
-         HospMayFlag = ifelse(hosp_7d_avg > 0 & date == "2020-05-07", 1, 0),
-          HospMayFlag = ifelse(is.na(HospMayFlag), 0, HospMayFlag),
-         HospEndFlag = ifelse(hosp_7d_avg > 0 & date == (today() - 1), 1, 0)) %>%
+  mutate(month_hosp_flag = ifelse(hosp_7d_avg > 0 & date == (max(date) - 30), 1, 0),
+         today_hosp_flag = ifelse(hosp_7d_avg > 0 & date == max(date), 1, 0)) %>%
   group_by(state) %>%
-  mutate(HospAprMay = sum(HospAprFlag, HospEndFlag),
-         HospMay = sum(HospMayFlag, HospEndFlag))
+  mutate(hosp_include = sum(month_hosp_flag, today_hosp_flag))
 
 # check uniqueness
 nrow(covid_data_states)
@@ -317,5 +316,23 @@ nrow(distinct(covid_data_states))/nrow(covid_data_states)
 ## export to CSV
 export(covid_data_states, "states-tableau.csv")
 
+######################################################
+# GOOGLE MOBILITY
+######################################################
+
+mobility <- read_csv("Global_Mobility_Report.csv", col_types = cols(sub_region_2 = col_character()))
+
+mobility <- mobility %>%
+  filter(country_region == "United States") %>%
+  rename(state = sub_region_1, county = sub_region_2) %>%
+  mutate(county = ifelse(is.na(county), "All Counties", county),
+         state = ifelse(is.na(state), "All States", state))
+
+states <- covid_data_states %>% select(state, state_abb)
+states <- distinct(states)
+
+mobility <- left_join(mobility, states, by = "state")
+
+export(mobility, "mobility.csv")
 
 ```
