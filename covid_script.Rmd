@@ -5,7 +5,7 @@ author: "Conor Kelly"
 
 ```{r setup, include=FALSE}
 
-setwd()
+setwd("C:/Users/ckelly/Documents/Covid-Personal - Copy")
 
 ## load packages
 
@@ -100,6 +100,31 @@ covid_data <- covid_data %>%
 # check uniqueness
 nrow(covid_data)
 nrow(distinct(covid_data))/nrow(covid_data)
+
+## elections
+cty_election <- read_csv("https://raw.githubusercontent.com/tonmcg/US_County_Level_Election_Results_08-16/master/2016_US_County_Level_Presidential_Results.csv")
+
+cty_election <- cty_election %>% 
+  select(combined_fips, votes_dem, votes_gop) %>% 
+  rename(fips = combined_fips) %>% 
+  mutate(fips = as.character(fips),
+         result2016 = if_else(votes_dem > votes_gop, "Blue", "Red"))
+
+nrow(distinct(cty_election))
+
+  ## make sure fips codes have zero in front if need be
+  cty_election$fix_fips <- ifelse(cty_election$fips < 10000, 1, 0)
+  cty_election$fips <- as.character(cty_election$fips)
+  cty_election$fips <- ifelse(cty_election$fix_fips == 1, paste0("0", cty_election$fips), cty_election$fips)
+  
+  covid_data$fips <- as.numeric(covid_data$fips)
+  cty_election$fips <- as.numeric(cty_election$fips)
+  
+  covid_data <- right_join(cty_election, covid_data,  by = "fips")
+  
+  ## deal with unmerged obs
+  covid_data <- covid_data %>%
+    mutate(result2016 = ifelse(ctyname == "New York City", "Blue", result2016))
 
 ## export to CSV
 export(covid_data, "counties-tableau.csv")
@@ -258,7 +283,6 @@ covid_data_states <- covid_data_states %>%
          state = if_else(state == "GU", "Guam", state),
          state = if_else(state == "MP", "Northern Marianas", state))
 
-
 ## state tiers
 covid_data_states <- covid_data_states %>%
   group_by(state) %>%
@@ -304,14 +328,48 @@ covid_data_states <- covid_data_states %>%
 
 ## is there hospitalization data for this state?
 covid_data_states <- covid_data_states %>%
-  mutate(month_hosp_flag = ifelse(hosp_7d_avg > 0 & date == (max(date) - 30), 1, 0),
-         today_hosp_flag = ifelse(hosp_7d_avg > 0 & date == max(date), 1, 0)) %>%
+  mutate(month_hosp_flag = ifelse(hospitalizedCurrently > 0 & date == (max(date) - 30), 1, 0),
+         today_hosp_flag = ifelse(hospitalizedCurrently > 0 & date == max(date), 1, 0),
+         hosp_flag_date = ifelse(hospitalizedCurrently > 0, 1, 0),1) %>%
   group_by(state) %>%
   mutate(hosp_include = sum(month_hosp_flag, today_hosp_flag))
 
 # check uniqueness
 nrow(covid_data_states)
 nrow(distinct(covid_data_states))/nrow(covid_data_states)
+
+## merge to hexmap
+hexmap <- read_excel("Periodic Table Map.xlsx", col_names = TRUE)
+hexmap <- hexmap %>% select(Row, Column, state)
+covid_data_states <- left_join(covid_data_states, hexmap, by = "state")
+
+## deal with OK and RI for some reason
+covid_data_states <- covid_data_states %>%
+  mutate(Row = ifelse(state_abb == "RI", 2, Row),
+         Column = ifelse(state_abb == "RI", 13, Column),
+         Row = ifelse(state_abb == "OK", 4, Row),
+         Column = ifelse(state_abb == "OK", 5, Column))
+
+## deaths projection based on state CFR to date
+covid_data_states <- covid_data_states %>%
+  mutate(deaths_proj_2wks = pos_7d_avg * (deaths / lag(positive, n = 14)))
+
+## election results
+election <- read_csv("https://raw.githubusercontent.com/kshaffer/election2016/master/2016ElectionResultsByState.csv")
+election <- election %>% select(state, clintonVotes, trumpVotes, totalVotes) %>%
+  mutate(result2016 = if_else(clintonVotes > trumpVotes, "Blue", "Red"))
+
+covid_data_states <- left_join(covid_data_states, election, by = "state")
+
+## governors
+gov <- read_csv("https://raw.githubusercontent.com/CivilServiceUSA/us-governors/master/source/us-governors.csv")
+gov <- gov %>% select(state, party)
+
+## need to update the data (which is from 2019) and deal with RI and OK
+covid_data_states <- left_join(covid_data_states, gov, by = "state") %>%
+   mutate(party = ifelse(str_detect(state, "Oklahoma"), "republican", party),
+          party = ifelse(str_detect(state, "Rhode"), "democrat", party),
+          party = ifelse(str_detect(state, "Maine"), "democrat", party))
 
 ## export to CSV
 export(covid_data_states, "states-tableau.csv")
