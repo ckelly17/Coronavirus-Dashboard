@@ -1,0 +1,79 @@
+---
+title: "covid_script"
+author: "Conor Kelly"
+---
+
+```{r setup, include=FALSE}
+
+setwd("C:/Users/ckelly/Documents/Covid-Personal - Copy")
+
+## load packages
+
+library(tidyverse)
+library(readxl)
+library(readr)
+library(anytime)
+library(pracma)
+library(lubridate)
+library(googlesheets4)
+
+######################################################
+# LONG TERM CARE
+######################################################
+
+## set google access
+gs_auth(email = "conor.richard.kelly@gmail.com")
+
+## read data from Google Sheets
+
+ltc <- read_sheet("https://docs.google.com/spreadsheets/d/1-j5WJ4IrIEdqg_-BaF9_5mw124SbrMKMgl__gFHKrZY/edit?ts=5ef63635#gid=957451839", sheet = "Cleaned Set by State", col_types = "c")
+
+ltc <- as.data.frame(ltc)
+
+## change variable names - will need to update if column order changes
+varnames <- c("date", "state", "cumPosRes_ltc", "cumDeathRes_ltc", "cumPosStaff_ltc", "cumDeathStaff_ltc", "cumPosResStaff_ltc", "cumDeathResStaff_ltc", "outbrkFacil_ltc", "cumPosRes_skf", "cumDeathRes_skf", "cumPosStaff_skf", "cumDeathStaff_skf", "cumPosResStaff_skf", "cumDeathResStaff_skf", "outbrkFacil_skf", "cumPosRes_alf", "cumDeathRes_alf", "cumPosStaff_alf", "cumDeathStaff_alf", "cumPosResStaff_alf", "cumDeathResStaff_alf", "outbrkFacil_alf", "cumPosRes_other", "cumDeathRes_other", "cumPosStaff_other", "cumDeathStaff_other", "cumPosResStaff_other", "cumDeathResStaff_other", "outbrkFacil_other", "notes")
+
+names(ltc) <- varnames
+
+## get rid of the first row
+ltc <- ltc %>% filter(date != "DATE")
+
+## dates
+ltc$date <- as.character(ltc$date)
+ltc$date <- anydate(ltc$date)
+ltc$month <- month(ltc$date)
+
+## fill in missing values with 0
+ltc <- ltc %>% mutate(cumPosRes_ltc = ifelse(is.null(cumPosRes_ltc), NA, cumPosRes_ltc))
+
+
+## take latest date within each month
+ltc <- ltc %>% group_by(state, month) %>%
+  filter(date == max(date))
+
+## add regions
+regions <- read_csv(url("https://raw.githubusercontent.com/cphalpert/census-regions/master/us%20census%20bureau%20regions%20and%20divisions.csv")) %>%
+  rename(state = `State Code`)
+ltc <- left_join(ltc, regions, by = "state")
+
+## add state daily data
+ctp <- read_csv("https://covidtracking.com/api/v1/states/daily.csv") %>%
+  select(date, state, positive, death)
+
+  # deal with dates
+  ctp$date <- as.character(ctp$date)
+  ctp$date <- anydate(ctp$date)
+  
+## merge states to LTC
+ltc <- left_join(ltc, ctp, by = c("state", "date"))
+
+## add population data
+state_pop <- read_csv("https://raw.githubusercontent.com/COVID19Tracking/associated-data/master/us_census_data/us_census_2018_population_estimates_states.csv") %>%
+  select(state, population)
+
+ltc <- left_join(ltc, state_pop)
+
+## write to a new sheet
+sheet_write(ltc, ss = "https://docs.google.com/spreadsheets/d/1Vgf7fZKPIdgSYFbTv-CoXknfEsGaPSjteqP2b1b9cW8/edit#gid=0", sheet = "LTC")
+
+```
