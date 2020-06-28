@@ -1,11 +1,5 @@
----
-title: "covid_script"
-author: "Conor Kelly"
----
 
 ```{r setup, include=FALSE}
-
-setwd("C:/Users/ckelly/Documents/Covid-Personal - Copy")
 
 ## load packages
 
@@ -26,7 +20,7 @@ gs_auth(email = "conor.richard.kelly@gmail.com")
 
 ## read data from Google Sheets
 
-ltc <- read_sheet("https://docs.google.com/spreadsheets/d/1-j5WJ4IrIEdqg_-BaF9_5mw124SbrMKMgl__gFHKrZY/edit?ts=5ef63635#gid=957451839", sheet = "Cleaned Set by State", col_types = "c")
+ltc <- read_sheet("URL GOES HERE", sheet = "Cleaned Set by State", col_types = "c")
 
 ltc <- as.data.frame(ltc)
 
@@ -74,6 +68,6 @@ state_pop <- read_csv("https://raw.githubusercontent.com/COVID19Tracking/associa
 ltc <- left_join(ltc, state_pop)
 
 ## write to a new sheet
-sheet_write(ltc, ss = "https://docs.google.com/spreadsheets/d/1Vgf7fZKPIdgSYFbTv-CoXknfEsGaPSjteqP2b1b9cW8/edit#gid=0", sheet = "LTC")
+sheet_write(ltc, ss = "TARGET URL GOES HERE", sheet = "LTC")
 
 ```
