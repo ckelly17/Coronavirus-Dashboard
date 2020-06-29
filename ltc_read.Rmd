@@ -1,11 +1,6 @@
----
-title: "covid_script"
-author: "Conor Kelly"
----
+
 
 ```{r setup, include=FALSE}
-
-setwd("C:/Users/ckelly/Documents/Covid-Personal - Copy")
 
 ## load packages
 
@@ -25,7 +20,7 @@ library(googlesheets4)
 gs_auth(email = "conor.richard.kelly@gmail.com")
 
 ## read data from Google Sheets
-ltc <- read_sheet("https://docs.google.com/spreadsheets/d/1-j5WJ4IrIEdqg_-BaF9_5mw124SbrMKMgl__gFHKrZY/edit?ts=5ef63635#gid=957451839", sheet = "Cleaned Set by State", col_types = "c")
+ltc <- read_sheet("SOURCE URL", sheet = "Cleaned Set by State", col_types = "c")
 ltc <- as.data.frame(ltc)
 
 ## change variable names - will need to update if column order changes
@@ -88,6 +83,6 @@ ltc <- ltc %>%
 
 
 ## write to a new sheet
-sheet_write(ltc, ss = "https://docs.google.com/spreadsheets/d/1Vgf7fZKPIdgSYFbTv-CoXknfEsGaPSjteqP2b1b9cW8/edit#gid=0", sheet = "LTC")
+sheet_write(ltc, ss = "TARGET URL", sheet = "LTC")
 
 ```
