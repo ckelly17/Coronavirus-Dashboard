@@ -1,5 +1,11 @@
+---
+title: "covid_script"
+author: "Conor Kelly"
+---
 
 ```{r setup, include=FALSE}
+
+setwd("C:/Users/ckelly/Documents/Covid-Personal - Copy")
 
 ## load packages
 
@@ -19,9 +25,7 @@ library(googlesheets4)
 gs_auth(email = "conor.richard.kelly@gmail.com")
 
 ## read data from Google Sheets
-
-ltc <- read_sheet("URL GOES HERE", sheet = "Cleaned Set by State", col_types = "c")
-
+ltc <- read_sheet("https://docs.google.com/spreadsheets/d/1-j5WJ4IrIEdqg_-BaF9_5mw124SbrMKMgl__gFHKrZY/edit?ts=5ef63635#gid=957451839", sheet = "Cleaned Set by State", col_types = "c")
 ltc <- as.data.frame(ltc)
 
 ## change variable names - will need to update if column order changes
@@ -37,9 +41,12 @@ ltc$date <- as.character(ltc$date)
 ltc$date <- anydate(ltc$date)
 ltc$month <- month(ltc$date)
 
-## fill in missing values with 0
-ltc <- ltc %>% mutate(cumPosRes_ltc = ifelse(is.null(cumPosRes_ltc), NA, cumPosRes_ltc))
-
+## fill in missing values with 0 and convert to numeric
+ltc <- ltc %>% mutate_if(is.character, ~replace(., is.na(.), 0))
+for (i in(3:30)) {
+  ltc[[i]] <- sub(",", "", ltc[[i]], fixed = TRUE)
+  ltc[[i]] <- as.numeric(ltc[[i]])
+}
 
 ## take latest date within each month
 ltc <- ltc %>% group_by(state, month) %>%
@@ -67,7 +74,20 @@ state_pop <- read_csv("https://raw.githubusercontent.com/COVID19Tracking/associa
 
 ltc <- left_join(ltc, state_pop)
 
+pop65 <- read_csv("https://raw.githubusercontent.com/veltman/state-population-by-age/master/2010.csv") %>%
+  select("State", "60 to 64","65 to 69","70 to 74","75 to 79","80 to 84","85+") %>%
+  mutate(pop65 = `60 to 64` + `65 to 69`+ `70 to 74` + `75 to 79` + `80 to 84` + `85+`) %>%
+  select(State, pop65)
+
+ltc <- left_join(ltc, pop65, by = "State")
+
+## final prep
+ltc <- ltc %>%
+  rename(state_abb = state) %>%
+  select(State, state_abb, date, month, Region, Division, population, pop65, everything())
+
+
 ## write to a new sheet
-sheet_write(ltc, ss = "TARGET URL GOES HERE", sheet = "LTC")
+sheet_write(ltc, ss = "https://docs.google.com/spreadsheets/d/1Vgf7fZKPIdgSYFbTv-CoXknfEsGaPSjteqP2b1b9cW8/edit#gid=0", sheet = "LTC")
 
 ```
