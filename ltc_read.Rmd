@@ -70,7 +70,7 @@ pop65 <- read_csv("https://raw.githubusercontent.com/veltman/state-population-by
 
 ltc2 <- left_join(ltc2, pop65, by = "state_name")
 
-## add in increases 
+## data setup and variable creation
 ltc2 <- ltc2 %>% 
   
   # generate total death numbers for overall and different facility types
@@ -119,18 +119,36 @@ ltc2 <- ltc2 %>%
   
           mutate(obs = row_number(), # counts the observation number within each group, can't lag the first observation
                  
+                 # change in deaths
                  newDeathsAllLTC = if_else(obs == 1, totalDeathsAllLTC, totalDeathsAllLTC - lag(totalDeathsAllLTC)),
                  newDeathsNH = if_else(obs == 1, totalDeathsNH, totalDeathsNH - lag(totalDeathsNH)),
                  newDeathsALF = if_else(obs == 1, totalDeathsALF, totalDeathsALF - lag(totalDeathsALF)),
                  newDeathsLTC = if_else(obs == 1, totalDeathsLTC, totalDeathsLTC - lag(totalDeathsLTC)),
                  newDeathsOther = if_else(obs == 1, totalDeathsOther, totalDeathsOther - lag(totalDeathsOther)),
-                                          
+                 
+                 # change in positives                          
                  newPosAllLTC = if_else(obs == 1, totalPosAllLTC, totalPosAllLTC - lag(totalPosAllLTC)),
                  newPosNH = if_else(obs == 1, totalPosNH, totalPosNH - lag(totalPosNH)),
                  newPosALF = if_else(obs == 1, totalPosALF, totalPosALF - lag(totalPosALF)),
                  newPosLTC = if_else(obs == 1, totalPosLTC, totalPosLTC - lag(totalPosLTC)),
                  newPosOther = if_else(obs == 1, totalPosOther, totalPosOther - lag(totalPosOther)),
                  
+                 # change in outbreak facilities
+                 changeOutbrkFac = if_else(obs == 1, totalOutbrkFacAllLTC, totalOutbrkFacAllLTC - lag(totalOutbrkFacAllLTC)),
+                 
+                 # change in residents tested
+                 newTestedResidents = if_else(obs == 1, totalTestedResidentsAllLTC, totalTestedResidentsAllLTC - lag(totalTestedResidentsAllLTC)),
+                 
+                 # change in staff tested
+                 newTestedStaff = if_else(obs == 1, totalTestedStaffAllLTC, totalTestedStaffAllLTC - lag(totalTestedStaffAllLTC)),
+                 
+                 # change in outbreak tested
+                 changeTestsConductedOutbrk = if_else(obs == 1, totalTestsConductedOutbrkFac, totalTestsConductedOutbrkFac - lag(totalTestsConductedOutbrkFac)),
+                 
+                 # change in facilities tested
+                 newTestedFacAllLTC = if_else(obs == 1, TotalTestedFacAllLTC, TotalTestedFacAllLTC - lag(TotalTestedFacAllLTC)),
+                 
+                 # indicator for whether it's the latest date for that state
                  max_date_ind = if_else(date == max(date), "Yes", "No"))
 
 ## write to a new sheet
