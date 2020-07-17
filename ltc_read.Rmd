@@ -1,5 +1,5 @@
 ---
-title: "covid_script"
+title: "Long-Term Care Data Setup"
 author: "Conor Kelly"
 ---
 
@@ -89,13 +89,29 @@ ltc2 <- ltc2 %>%
          totalPosAllLTC = PosRes_ltc	+ ProbPosRes_ltc + PosStaff_ltc	+ ProbPosStaff_ltc + PosResStaff_ltc	+ ProbPosResStaff_ltc +
                              PosRes_nh	+ ProbPosRes_nh + PosStaff_nh	+ ProbPosStaff_nh + PosResStaff_nh	+ ProbPosResStaff_nh +
                              PosRes_alf	+ ProbPosRes_alf + PosStaff_alf	+ ProbPosStaff_alf + PosResStaff_alf	+ ProbPosResStaff_alf +
-                             PosRes_other	+ ProbPosRes_other + PosStaff_other	+ ProbPosStaff_other + PosResStaff_other	+ ProbPosResStaff_other,
+                             PosRes_other	+ ProbPosRes_other + PosStaff_other	+ ProbPosStaff_other + PosResStaff_other + ProbPosResStaff_other,
          
          # positives in different facility types
          totalPosNH = PosRes_nh	+ ProbPosRes_nh + PosStaff_nh	+ ProbPosStaff_nh + PosResStaff_nh	+ ProbPosResStaff_nh,
          totalPosALF = PosRes_alf	+ ProbPosRes_alf + PosStaff_alf	+ ProbPosStaff_alf + PosResStaff_alf	+ ProbPosResStaff_alf,
          totalPosLTC = PosRes_ltc	+ ProbPosRes_ltc + PosStaff_ltc	+ ProbPosStaff_ltc + PosResStaff_ltc	+ ProbPosResStaff_ltc,
-         totalPosOther = PosRes_other	+ ProbPosRes_other + PosStaff_other	+ ProbPosStaff_other + PosResStaff_other	+ ProbPosResStaff_other) %>%
+         totalPosOther = PosRes_other	+ ProbPosRes_other + PosStaff_other	+ ProbPosStaff_other + PosResStaff_other	+ ProbPosResStaff_other,
+         
+         
+         # number of outbreak facilities
+         totalOutbrkFacAllLTC = OutbrkFac_alf + OutbrkFac_ltc + OutbrkFac_nh + OutbrkFac_other,
+         
+         # number tested at outbreak facilities
+         totalTestsConductedOutbrkFac = OutrkFacTestsConducted_ltc + OutrkFacTestsConducted_alf + OutrkFacTestsConducted_nh + OutrkFacTestsConducted_other,
+         
+         # number of residents tested overall
+         totalTestedResidentsAllLTC = TestedRes_ltc + TestedRes_nh + TestedRes_alf + TestedRes_other,
+         
+         # number of staff rested overall
+         totalTestedStaffAllLTC = TestedStaff_ltc + TestedStaff_nh + TestedStaff_alf + TestedStaff_other,
+         
+         # number of tested facilities
+         TotalTestedFacAllLTC = TestedFac_alf + TestedFac_ltc + TestedFac_nh + TestedFac_other) %>%
          
          # get counts of increases in positives and deaths
           group_by(Data_Type, state) %>%
