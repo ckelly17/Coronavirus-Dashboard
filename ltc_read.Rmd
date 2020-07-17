@@ -1,6 +1,11 @@
-
+---
+title: "covid_script"
+author: "Conor Kelly"
+---
 
 ```{r setup, include=FALSE}
+
+setwd("C:/Users/ckelly/Documents/Covid-Personal - Copy")
 
 ## load packages
 
@@ -17,40 +22,28 @@ library(googlesheets4)
 ######################################################
 
 ## set google access
-gs_auth(email = "conor.richard.kelly@gmail.com")
+gs4_auth(email = "conor.richard.kelly@gmail.com") # may need to run this directly from the console, not sure why
 
 ## read data from Google Sheets
-ltc <- read_sheet("SOURCE URL", sheet = "Cleaned Set by State", col_types = "c")
-ltc <- as.data.frame(ltc)
-
-## change variable names - will need to update if column order changes
-varnames <- c("date", "state", "cumPosRes_ltc", "cumDeathRes_ltc", "cumPosStaff_ltc", "cumDeathStaff_ltc", "cumPosResStaff_ltc", "cumDeathResStaff_ltc", "outbrkFacil_ltc", "cumPosRes_skf", "cumDeathRes_skf", "cumPosStaff_skf", "cumDeathStaff_skf", "cumPosResStaff_skf", "cumDeathResStaff_skf", "outbrkFacil_skf", "cumPosRes_alf", "cumDeathRes_alf", "cumPosStaff_alf", "cumDeathStaff_alf", "cumPosResStaff_alf", "cumDeathResStaff_alf", "outbrkFacil_alf", "cumPosRes_other", "cumDeathRes_other", "cumPosStaff_other", "cumDeathStaff_other", "cumPosResStaff_other", "cumDeathResStaff_other", "outbrkFacil_other", "notes")
-
-names(ltc) <- varnames
-
-## get rid of the first row
-ltc <- ltc %>% filter(date != "DATE")
+ltc2<- read_sheet("https://docs.google.com/spreadsheets/d/1-j5WJ4IrIEdqg_-BaF9_5mw124SbrMKMgl__gFHKrZY/edit?ts=5ef63635#gid=957451839", sheet = "Publish Data", col_types = "c")
 
 ## dates
-ltc$date <- as.character(ltc$date)
-ltc$date <- anydate(ltc$date)
-ltc$month <- month(ltc$date)
+ltc2$Date <- anydate(as.character(ltc2$Date))
+ltc2$month <- month(ltc2$Date)
 
 ## fill in missing values with 0 and convert to numeric
-ltc <- ltc %>% mutate_if(is.character, ~replace(., is.na(.), 0))
-for (i in(3:30)) {
-  ltc[[i]] <- sub(",", "", ltc[[i]], fixed = TRUE)
-  ltc[[i]] <- as.numeric(ltc[[i]])
+ltc2 <- ltc2 %>% mutate_if(is.character, ~replace(., is.na(.), 0))
+for (i in(4:71)) {
+  ltc2[[i]] <- sub(",", "", ltc2[[i]], fixed = TRUE)
+  ltc2[[i]] <- as.numeric(ltc2[[i]])
 }
-
-## take latest date within each month
-ltc <- ltc %>% group_by(state, month) %>%
-  filter(date == max(date))
 
 ## add regions
 regions <- read_csv(url("https://raw.githubusercontent.com/cphalpert/census-regions/master/us%20census%20bureau%20regions%20and%20divisions.csv")) %>%
-  rename(state = `State Code`)
-ltc <- left_join(ltc, regions, by = "state")
+  rename(State_Abbr = `State Code`)
+ltc2 <- left_join(ltc2, regions, by = "State_Abbr") %>%
+  rename(state = State_Abbr,
+         date = Date)
 
 ## add state daily data
 ctp <- read_csv("https://covidtracking.com/api/v1/states/daily.csv") %>%
@@ -60,29 +53,71 @@ ctp <- read_csv("https://covidtracking.com/api/v1/states/daily.csv") %>%
   ctp$date <- as.character(ctp$date)
   ctp$date <- anydate(ctp$date)
   
-## merge states to LTC
-ltc <- left_join(ltc, ctp, by = c("state", "date"))
+## merge states to ltc2
+ltc2 <- left_join(ltc2, ctp, by = c("state", "date"))
 
 ## add population data
 state_pop <- read_csv("https://raw.githubusercontent.com/COVID19Tracking/associated-data/master/us_census_data/us_census_2018_population_estimates_states.csv") %>%
-  select(state, population)
+  select(state, state_name, population)
 
-ltc <- left_join(ltc, state_pop)
+ltc2 <- left_join(ltc2, state_pop)
 
 pop65 <- read_csv("https://raw.githubusercontent.com/veltman/state-population-by-age/master/2010.csv") %>%
   select("State", "60 to 64","65 to 69","70 to 74","75 to 79","80 to 84","85+") %>%
   mutate(pop65 = `60 to 64` + `65 to 69`+ `70 to 74` + `75 to 79` + `80 to 84` + `85+`) %>%
-  select(State, pop65)
+  select(State, pop65) %>%
+  rename(state_name = State)
 
-ltc <- left_join(ltc, pop65, by = "State")
+ltc2 <- left_join(ltc2, pop65, by = "state_name")
 
-## final prep
-ltc <- ltc %>%
-  rename(state_abb = state) %>%
-  select(State, state_abb, date, month, Region, Division, population, pop65, everything())
-
+## add in increases 
+ltc2 <- ltc2 %>% 
+  
+  # generate total death numbers for overall and different facility types
+  mutate(totalDeathsAllLTC = DeathRes_ltc	+ ProbDeathRes_ltc + DeathStaff_ltc	+ ProbDeathStaff_ltc + DeathResStaff_ltc	+ ProbDeathResStaff_ltc +
+                             DeathRes_nh	+ ProbDeathRes_nh + DeathStaff_nh	+ ProbDeathStaff_nh + DeathResStaff_nh	+ ProbDeathResStaff_nh +
+                             DeathRes_alf	+ ProbDeathRes_alf + DeathStaff_alf	+ ProbDeathStaff_alf + DeathResStaff_alf	+ ProbDeathResStaff_alf +
+                             DeathRes_other	+ ProbDeathRes_other + DeathStaff_other	+ ProbDeathStaff_other + DeathResStaff_other	+ ProbDeathResStaff_other,
+         
+         # deaths in different facility types
+         totalDeathsNH = DeathRes_nh	+ ProbDeathRes_nh + DeathStaff_nh	+ ProbDeathStaff_nh + DeathResStaff_nh	+ ProbDeathResStaff_nh,
+         totalDeathsALF = DeathRes_alf	+ ProbDeathRes_alf + DeathStaff_alf	+ ProbDeathStaff_alf + DeathResStaff_alf	+ ProbDeathResStaff_alf,
+         totalDeathsLTC = DeathRes_ltc	+ ProbDeathRes_ltc + DeathStaff_ltc	+ ProbDeathStaff_ltc + DeathResStaff_ltc	+ ProbDeathResStaff_ltc,
+         totalDeathsOther = DeathRes_other	+ ProbDeathRes_other + DeathStaff_other	+ ProbDeathStaff_other + DeathResStaff_other	+ ProbDeathResStaff_other,
+ 
+         # positives overall
+         totalPosAllLTC = PosRes_ltc	+ ProbPosRes_ltc + PosStaff_ltc	+ ProbPosStaff_ltc + PosResStaff_ltc	+ ProbPosResStaff_ltc +
+                             PosRes_nh	+ ProbPosRes_nh + PosStaff_nh	+ ProbPosStaff_nh + PosResStaff_nh	+ ProbPosResStaff_nh +
+                             PosRes_alf	+ ProbPosRes_alf + PosStaff_alf	+ ProbPosStaff_alf + PosResStaff_alf	+ ProbPosResStaff_alf +
+                             PosRes_other	+ ProbPosRes_other + PosStaff_other	+ ProbPosStaff_other + PosResStaff_other	+ ProbPosResStaff_other,
+         
+         # positives in different facility types
+         totalPosNH = PosRes_nh	+ ProbPosRes_nh + PosStaff_nh	+ ProbPosStaff_nh + PosResStaff_nh	+ ProbPosResStaff_nh,
+         totalPosALF = PosRes_alf	+ ProbPosRes_alf + PosStaff_alf	+ ProbPosStaff_alf + PosResStaff_alf	+ ProbPosResStaff_alf,
+         totalPosLTC = PosRes_ltc	+ ProbPosRes_ltc + PosStaff_ltc	+ ProbPosStaff_ltc + PosResStaff_ltc	+ ProbPosResStaff_ltc,
+         totalPosOther = PosRes_other	+ ProbPosRes_other + PosStaff_other	+ ProbPosStaff_other + PosResStaff_other	+ ProbPosResStaff_other) %>%
+         
+         # get counts of increases in positives and deaths
+          group_by(Data_Type, state) %>%
+          arrange(Data_Type, state, date) %>%
+  
+          mutate(obs = row_number(), # counts the observation number within each group, can't lag the first observation
+                 
+                 newDeathsAllLTC = if_else(obs == 1, totalDeathsAllLTC, totalDeathsAllLTC - lag(totalDeathsAllLTC)),
+                 newDeathsNH = if_else(obs == 1, totalDeathsNH, totalDeathsNH - lag(totalDeathsNH)),
+                 newDeathsALF = if_else(obs == 1, totalDeathsALF, totalDeathsALF - lag(totalDeathsALF)),
+                 newDeathsLTC = if_else(obs == 1, totalDeathsLTC, totalDeathsLTC - lag(totalDeathsLTC)),
+                 newDeathsOther = if_else(obs == 1, totalDeathsOther, totalDeathsOther - lag(totalDeathsOther)),
+                                          
+                 newPosAllLTC = if_else(obs == 1, totalPosAllLTC, totalPosAllLTC - lag(totalPosAllLTC)),
+                 newPosNH = if_else(obs == 1, totalPosNH, totalPosNH - lag(totalPosNH)),
+                 newPosALF = if_else(obs == 1, totalPosALF, totalPosALF - lag(totalPosALF)),
+                 newPosLTC = if_else(obs == 1, totalPosLTC, totalPosLTC - lag(totalPosLTC)),
+                 newPosOther = if_else(obs == 1, totalPosOther, totalPosOther - lag(totalPosOther)),
+                 
+                 max_date_ind = if_else(date == max(date), "Yes", "No"))
 
 ## write to a new sheet
-sheet_write(ltc, ss = "TARGET URL", sheet = "LTC")
+sheet_write(ltc2, ss = "https://docs.google.com/spreadsheets/d/1Vgf7fZKPIdgSYFbTv-CoXknfEsGaPSjteqP2b1b9cW8/edit#gid=0", sheet = "LTC2")
 
 ```
