@@ -16,6 +16,29 @@ library(rio)
 library(anytime)
 library(pracma)
 library(lubridate)
+library(jsonlite)
+
+
+######################################################
+# MERGE FUNCTION
+######################################################
+merge_tabler <- function(df_1, df_2, keys){
+  # FIRST, INNER_JOIN RETURNS ALL KEY COMBINATIONS THAT APPEAR IN BOTH DATASETS
+  m1 <- inner_join(df_1, df_2, by = keys) %>%
+    mutate(merge = "both") # ROWS THAT APPEAR IN BOTH DATASETS
+  
+  # NEXT, ANTI_JOIN SHOWS KEY COMBOS PRESENT IN DF_1 THAT ARE NOT PRESENT IN DF_2
+  m2 <- bind_rows(m1, anti_join(df_1, df_2, by = keys) %>% 
+                    mutate(merge = 'left_only')) # ROWS THAT ONLY APPEAR IN DF_1 
+  
+  # THEN, ANTI_JOIN SHOWS KEY COMBOS PRESENT IN DF_2 THAT ARE NOT PRESENT IN DF_1
+  m3 <- bind_rows(m2, anti_join(df_2, df_1, by = keys) %>% 
+                    mutate(merge = 'right_only')) # ROWS THAT ONLY APPEAR IN DF_2 
+  
+  # DISPLAY MERGE TABLE
+  count(m3, merge)
+}
+
 
 ######################################################
 # COUNTIES
@@ -44,20 +67,27 @@ county_pop$fips <- as.numeric(county_pop$fips)
 
 msa <- msa %>%
   select(fipscounty, cbsaname, msaname) %>%
-  rename(fips = fipscounty) %>%
+  dplyr::rename(fips = fipscounty) %>%
   mutate(fips = as.numeric(fips))
-  
+nrow(msa)
+msa <- distinct(msa)
+nrow(msa)
+
 ## destring NYT fips
 nyt_covid$fips <- as.numeric(nyt_covid$fips) 
 
 ## merge county_pop to NYT data
-covid_data <- right_join(county_pop, nyt_covid, by = "fips")
-covid_data <- right_join(msa, covid_data, by = "fips")
+covid_data <- right_join(county_pop, nyt_covid, by = "fips") %>%
+    arrange(stname, ctyname, date)
+covid_data <- right_join(msa, covid_data, by = "fips") %>%
+  arrange(stname, ctyname, date)
 
 ## merge regions
 regions <- regions %>%
-    rename(stname = State)
+    dplyr::rename(stname = State)
 covid_data <- right_join(regions, covid_data, by = "stname")
+
+
 
 ## deal with unmerged obs
 covid_data <- covid_data %>%
@@ -82,7 +112,7 @@ covid_data$fips <- ifelse(covid_data$fix_fips == 1, paste0("0", covid_data$fips)
 
 ## calculate new cases and new deaths
 covid_data <- covid_data %>%
-  arrange(stname, ctyname, date) %>%
+  arrange(stname, ctyname, date)%>%
   group_by(stname, ctyname) %>%
   mutate(n_dates = n()) %>%
   filter(n_dates >=8) %>%
@@ -99,6 +129,9 @@ covid_data <- covid_data %>%
 
 # check uniqueness
 nrow(covid_data)
+nrow(distinct(covid_data))
+nrow(distinct(covid_data))/nrow(covid_data)
+covid_data <- distinct(covid_data)
 nrow(distinct(covid_data))/nrow(covid_data)
 
 ## elections
@@ -106,7 +139,7 @@ cty_election <- read_csv("https://raw.githubusercontent.com/tonmcg/US_County_Lev
 
 cty_election <- cty_election %>% 
   select(combined_fips, votes_dem, votes_gop) %>% 
-  rename(fips = combined_fips) %>% 
+  dplyr::rename(fips = combined_fips) %>% 
   mutate(fips = as.character(fips),
          result2016 = if_else(votes_dem > votes_gop, "Blue", "Red"))
 
@@ -125,6 +158,18 @@ nrow(distinct(cty_election))
   ## deal with unmerged obs
   covid_data <- covid_data %>%
     mutate(result2016 = ifelse(ctyname == "New York City", "Blue", result2016))
+
+## dates  
+covid_data <- covid_data %>%
+  mutate(max_date = max(date), one_week_date = max_date - 7, two_week_date = max_date - 14,
+         max_date_ind = ifelse(max_date == date, "Yes" , "No"),
+         weekday = weekdays(date),
+         max_weekday = weekdays(max_date),
+         weekday_match = ifelse(weekday == max_weekday, "Yes", "No"))
+
+## merge with regions
+covid_data <- right_join(regions, covid_data, by = "stname")
+
 
 ## export to CSV
 export(covid_data, "counties-tableau.csv")
@@ -186,11 +231,13 @@ covid_data_states <- distinct(covid_data_states)
 ######################################################
 
 # read data
-tracking <- read_csv("https://covidtracking.com/api/v1/states/daily.csv")
+
+tracking <- fromJSON("https://covidtracking.com/api/v1/states/daily.json")
+
 
 # select columns
 tracking <- tracking %>%
-  select(date, state, fips, positive, negative, hospitalizedIncrease, hospitalizedCurrently, totalTestResultsIncrease, positiveIncrease, negativeIncrease, deathIncrease, totalTestResults, death)
+  select(date, state, fips, positive, negative, hospitalizedIncrease, hospitalizedCurrently, totalTestResultsIncrease, positiveIncrease, negativeIncrease, deathIncrease, totalTestResults, death, inIcuCumulative, inIcuCurrently, onVentilatorCurrently, onVentilatorCumulative, positiveCasesViral)
 
 # deal with dates
 tracking$date <- as.character(tracking$date)
@@ -201,8 +248,10 @@ tracking <- tracking %>%
   mutate(pct_positive = positiveIncrease/totalTestResultsIncrease) %>%
   arrange(state, date) %>%
   group_by(state) %>%
-  mutate(pos_7d_avg = movavg(positiveIncrease, 7, type = "s"),
+  mutate(positiveCasesViralIncrease = positiveCasesViral - lag(positiveCasesViral),
+         pos_7d_avg = movavg(positiveIncrease, 7, type = "s"),
          death_7d_avg = movavg(deathIncrease, 7, type = "s"),
+         totalTestResultsIncrease = ifelse(state == "MN" & date == "2020-07-31", 0, totalTestResultsIncrease),
          test_7d_avg = movavg(totalTestResultsIncrease, 7, type = "s"),
          hosp_7d_avg = movavg(hospitalizedCurrently, 7, type = "s"),
          totaltests_7d = test_7d_avg*7,
@@ -211,11 +260,15 @@ tracking <- tracking %>%
          lstwk_pos_7d_avg = lag(pos_7d_avg, n = 7),
          lstwk_test_7d_avg = lag(test_7d_avg, n = 7),
          changeHosp = hospitalizedCurrently -  lag(hospitalizedCurrently, n = 1),
+         changeICU = inIcuCumulative - lag(inIcuCumulative, n = 1),
          deaths_incr_week = ((death_7d_avg - lstwk_death_7d_avg)/lstwk_death_7d_avg),
          pos_incr_week = ((pos_7d_avg - lstwk_pos_7d_avg)/lstwk_pos_7d_avg),
          tests_incr_week = ((test_7d_avg - lstwk_test_7d_avg)/lstwk_test_7d_avg),
          thiswk_pp = totalpos_7d / totaltests_7d,
-         lstwk_pp = lag(thiswk_pp, n = 7))
+         lstwk_pp = lag(thiswk_pp, n = 7),
+         death_7d_avg = ifelse(state == "NJ" & date >= "2020-06-25" & date <= "2020-07-01", (death_7d_avg - 264.85), death_7d_avg),
+         death_7d_avg = ifelse(state == "TX" & date >= "2020-07-27" & date <= "2020-08-02", (death_7d_avg - 90.14), death_7d_avg),
+         latest_pos_incr = last(pos_incr_week))
 
 # merge with NYT states
 covid_data_states <- right_join(covid_data_states, tracking, by = c("fips", "date"))
@@ -303,12 +356,23 @@ covid_data_states <- covid_data_states %>%
          days_since_peak_death = date - max_death_date,
          perc_decl_fr_death_peak = -(death_7d_avg - max_deaths)/ max_deaths)
 
+covid_data_states <- covid_data_states %>%
+  group_by(state) %>%
+  mutate(max_pos = max(pos_7d_avg, na.rm = TRUE),
+         max_pos_date = (ifelse(pos_7d_avg == max_pos, date, NA)),
+         max_pos_date = max(max_pos_date, na.rm = TRUE),
+         max_pos_date = as.Date.numeric(max_pos_date, origin = "1970-01-01"),
+         days_since_peak_pos = date - max_pos_date)
+
 ## get dates
 covid_data_states <- covid_data_states %>%
   mutate(max_date = max(date), one_week_date = max_date - 7, two_week_date = max_date - 14,
          max_date_ind = ifelse(max_date == date, "Yes" , "No"),
          one_wk_ind = ifelse(one_week_date == date, "Yes" , "No"),
-         two_week_ind = ifelse(two_week_date == date, "Yes" , "No"))
+         two_week_ind = ifelse(two_week_date == date, "Yes" , "No"),
+         weekday = weekdays(date),
+         max_weekday = weekdays(max_date),
+         weekday_match = ifelse(weekday == max_weekday, "Yes", "No"))
 
 ## mortality rates
 covid_data_states <- covid_data_states %>%
@@ -316,7 +380,7 @@ covid_data_states <- covid_data_states %>%
 
 ## merge with regions
 regions <- regions %>%
-    rename(state = stname)
+    dplyr::rename(state = stname)
 covid_data_states <- right_join(regions, covid_data_states, by = "state")
 
 ## deal with RI and OK
@@ -371,6 +435,24 @@ covid_data_states <- left_join(covid_data_states, gov, by = "state") %>%
           party = ifelse(str_detect(state, "Rhode"), "democrat", party),
           party = ifelse(str_detect(state, "Maine"), "democrat", party))
 
+## deaths lagging
+covid_data_states <- covid_data_states %>%
+  group_by(state) %>%
+  arrange(state, date) %>%
+  mutate(deaths_in_14days = lead(death_7d_avg, n = 14),
+         deaths_in_21days = lead(death_7d_avg, n = 21),
+         deaths_in_28days = lead(death_7d_avg, n = 28))
+
+## ranking states by positive cases
+ranking <- covid_data_states %>% filter(max_date_ind == "Yes") %>%
+  select(state, pos_7d_avg, pop) %>%
+  ungroup() %>%
+  mutate(pos_7d_perpop = pos_7d_avg / pop,
+         cases_rank = rank(-pos_7d_perpop, na.last = TRUE)) %>%
+  select(state, cases_rank)
+
+covid_data_states <- left_join(covid_data_states, ranking , by = "state")
+
 ## export to CSV
 export(covid_data_states, "states-tableau.csv")
 
@@ -382,7 +464,7 @@ mobility <- read_csv("Global_Mobility_Report.csv", col_types = cols(sub_region_2
 
 mobility <- mobility %>%
   filter(country_region == "United States") %>%
-  rename(state = sub_region_1, county = sub_region_2) %>%
+  dplyr::rename(state = sub_region_1, county = sub_region_2) %>%
   mutate(county = ifelse(is.na(county), "All Counties", county),
          state = ifelse(is.na(state), "All States", state))
 
