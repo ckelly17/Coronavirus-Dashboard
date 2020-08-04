@@ -186,7 +186,6 @@ ltc2 <- ltc2 %>%
 ## take out missing rows
 ltc2 <- ltc2 %>% filter(!is.na(date)) 
                         
-
 ## write to a new sheet
 sheet_write(ltc2, ss = "https://docs.google.com/spreadsheets/d/1Vgf7fZKPIdgSYFbTv-CoXknfEsGaPSjteqP2b1b9cW8/edit#gid=0", sheet = "LTC2")
 
