@@ -69,6 +69,7 @@ pop65 <- read_csv("https://raw.githubusercontent.com/veltman/state-population-by
   select(State, pop65) %>%
   rename(state_name = State)
 
+## deal with unmerged states/territories
 ltc2 <- left_join(ltc2, pop65, by = "state_name") %>%
         mutate(state_name = if_else(state == "PR", "Puerto Rico",
                                    if_else(state == "AS", "American Samoa",
@@ -76,9 +77,6 @@ ltc2 <- left_join(ltc2, pop65, by = "state_name") %>%
                                    if_else(state == "MP", "Northern Mariana Islands", state_name)))),
                State = state_name) %>%
         relocate(state, State, state_name)
-               
-
-## deal with unmerged states/territories
 
 ## data setup and variable creation
 ltc2 <- ltc2 %>% 
