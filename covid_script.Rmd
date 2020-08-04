@@ -231,9 +231,7 @@ covid_data_states <- distinct(covid_data_states)
 ######################################################
 
 # read data
-
 tracking <- fromJSON("https://covidtracking.com/api/v1/states/daily.json")
-
 
 # select columns
 tracking <- tracking %>%
