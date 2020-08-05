@@ -5,4 +5,4 @@ Building a Tableau dashboard based on New York Times COVID-19 cases data by U.S.
 
 The dashboard is built using a merged dataset from the two principal data sources (as well as complimentary population and regional metrics). The R code for this project can be found on this site as "covid_script."
 
-![Dashboard](https://github.com/ckelly17/Coronavirus-Dashboard/blob/master/landing_page.png)
+![Dashboard](https://github.com/ckelly17/Coronavirus-Dashboard/blob/master//misc/landing_page.png)
