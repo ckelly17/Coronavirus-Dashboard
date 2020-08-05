@@ -19,26 +19,6 @@ library(lubridate)
 library(jsonlite)
 
 ######################################################
-# MERGE FUNCTION
-######################################################
-merge_tabler <- function(df_1, df_2, keys){
-  # FIRST, INNER_JOIN RETURNS ALL KEY COMBINATIONS THAT APPEAR IN BOTH DATASETS
-  m1 <- inner_join(df_1, df_2, by = keys) %>%
-    mutate(merge = "both") # ROWS THAT APPEAR IN BOTH DATASETS
-  
-  # NEXT, ANTI_JOIN SHOWS KEY COMBOS PRESENT IN DF_1 THAT ARE NOT PRESENT IN DF_2
-  m2 <- bind_rows(m1, anti_join(df_1, df_2, by = keys) %>% 
-                    mutate(merge = 'left_only')) # ROWS THAT ONLY APPEAR IN DF_1 
-  
-  # THEN, ANTI_JOIN SHOWS KEY COMBOS PRESENT IN DF_2 THAT ARE NOT PRESENT IN DF_1
-  m3 <- bind_rows(m2, anti_join(df_2, df_1, by = keys) %>% 
-                    mutate(merge = 'right_only')) # ROWS THAT ONLY APPEAR IN DF_2 
-  
-  # DISPLAY MERGE TABLE
-  count(m3, merge)
-}
-
-######################################################
 # COUNTIES
 ######################################################
 
@@ -65,7 +45,7 @@ county_pop$fips <- as.numeric(county_pop$fips)
 
 msa <- msa %>%
   select(fipscounty, cbsaname, msaname) %>%
-  dplyr::rename(fips = fipscounty) %>%
+  rename(fips = fipscounty) %>%
   mutate(fips = as.numeric(fips))
 nrow(msa)
 msa <- distinct(msa)
@@ -82,10 +62,8 @@ covid_data <- right_join(msa, covid_data, by = "fips") %>%
 
 ## merge regions
 regions <- regions %>%
-    dplyr::rename(stname = State)
+    rename(stname = State)
 covid_data <- right_join(regions, covid_data, by = "stname")
-
-
 
 ## deal with unmerged obs
 covid_data <- covid_data %>%
@@ -137,7 +115,7 @@ cty_election <- read_csv("https://raw.githubusercontent.com/tonmcg/US_County_Lev
 
 cty_election <- cty_election %>% 
   select(combined_fips, votes_dem, votes_gop) %>% 
-  dplyr::rename(fips = combined_fips) %>% 
+  rename(fips = combined_fips) %>% 
   mutate(fips = as.character(fips),
          result2016 = if_else(votes_dem > votes_gop, "Blue", "Red"))
 
@@ -376,7 +354,7 @@ covid_data_states <- covid_data_states %>%
 
 ## merge with regions
 regions <- regions %>%
-    dplyr::rename(state = stname)
+    rename(state = stname)
 covid_data_states <- right_join(regions, covid_data_states, by = "state")
 
 ## deal with RI and OK
@@ -460,7 +438,7 @@ mobility <- read_csv("Global_Mobility_Report.csv", col_types = cols(sub_region_2
 
 mobility <- mobility %>%
   filter(country_region == "United States") %>%
-  dplyr::rename(state = sub_region_1, county = sub_region_2) %>%
+  rename(state = sub_region_1, county = sub_region_2) %>%
   mutate(county = ifelse(is.na(county), "All Counties", county),
          state = ifelse(is.na(state), "All States", state))
 
