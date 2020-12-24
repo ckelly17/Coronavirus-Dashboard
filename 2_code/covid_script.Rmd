@@ -17,6 +17,9 @@ library(anytime)
 library(pracma)
 library(lubridate)
 library(jsonlite)
+library(janitor)
+library(naniar)
+
 
 ######################################################
 # COUNTIES
@@ -32,17 +35,27 @@ regions <- read_csv(url(regions))
 county_pop <- read_csv("co-est2019-alldata.csv", col_names = TRUE, col_types = cols(.default = "c"))
 msa <- read_csv("cbsatocountycrosswalk.csv", col_names = TRUE, col_types = cols(.default = "c"))
 county_codes <- read_excel("all-geocodes-v2018.xlsx", col_names = TRUE, range = "A5:G43852")
+density_raw <- read_csv("https://raw.githubusercontent.com/juliachristensen/ps239T-final-project/master/Data_Geo_Sophistication/County_Density_Census/DEC_10_SF1_GCTPH1.US05PR.csv", col_types = cols(.default = "c")) %>%
+  row_to_names(1) %>%
+  clean_names()
+
+## population density 
+density <- density_raw %>%
+  select(id, id2, target_geo_id2, geographic_area_2, population, area_in_square_miles_total_area) %>%
+  mutate(fips = as.numeric(target_geo_id2),
+         pop_density  = as.numeric(population) / as.numeric(area_in_square_miles_total_area)) %>%
+  select(fips, pop_density)
 
 ## subset data for population estimates and clean varnames
-varnames <- c("SUMLEV", "REGION", "DIVISION","STATE", "COUNTY", "STNAME", "CTYNAME", "POPESTIMATE2019")
-county_pop <- county_pop[varnames]
-lowernames <- tolower(colnames(county_pop))
-names(county_pop) <- lowernames
+county_pop <- county_pop %>%
+  select(c("SUMLEV", "REGION", "DIVISION","STATE", "COUNTY", "STNAME", "CTYNAME", "POPESTIMATE2019")) %>%
+  clean_names()
 
 ## generate population estimates for counties by adding FIPS code to pop and MSA file
 county_pop$fips <- paste0(county_pop$state, county_pop$county)
 county_pop$fips <- as.numeric(county_pop$fips)
 
+## metro region
 msa <- msa %>%
   select(fipscounty, cbsaname, msaname) %>%
   rename(fips = fipscounty) %>%
@@ -71,6 +84,9 @@ covid_data <- covid_data %>%
          stname = ifelse(is.na(stname), state.y, stname),
          msaname = ifelse(ctyname == "New York City", "NEW YORK-NEWARK, NY-NJ-PA", msaname))
 
+## merge to population density
+covid_data <- left_join(covid_data, density, by = "fips")
+
 ## set population variable
 covid_data <- covid_data %>% 
   mutate(pop = as.numeric(popestimate2019),
@@ -78,7 +94,7 @@ covid_data <- covid_data %>%
         deathper1k = deaths/pop*1000)
 
 ## get right variable names
-varnames <- c("fips", "stname", "ctyname","pop", "cases", "deaths", "caseper1k", "deathper1k", "date", "msaname", "cbsaname")
+varnames <- c("fips", "stname", "ctyname","pop", "cases", "deaths", "caseper1k", "deathper1k", "date", "msaname", "cbsaname", "pop_density")
 covid_data <- covid_data[varnames]
 
 ## make sure fips codes have zero in front if need be
@@ -166,10 +182,12 @@ nrow(nyt_covid_states)
 nrow(distinct(nyt_covid_states))/nrow(nyt_covid_states)
 
 ## subset data for population estimates and clean varnames
-varnames <- c("SUMLEV", "REGION", "DIVISION","STATE", "COUNTY", "STNAME", "CTYNAME", "POPESTIMATE2019")
-county_pop <- county_pop[varnames]
-lowernames <- tolower(colnames(county_pop))
-names(county_pop) <- lowernames
+county_pop <- county_pop %>%
+  select(c("SUMLEV", "REGION", "DIVISION","STATE", "COUNTY", "STNAME", "CTYNAME", "POPESTIMATE2019")) %>%
+  clean_names()
+#county_pop <- county_pop[varnames]
+#lowernames <- tolower(colnames(county_pop))
+#names(county_pop) <- lowernames
 
 ## generate population estimates for counties by adding FIPS code to pop file
 county_pop$fips <- county_pop$state
@@ -207,15 +225,14 @@ covid_data_states <- distinct(covid_data_states)
 ######################################################
 
 # read data
-tracking <- fromJSON("https://covidtracking.com/api/v1/states/daily.json")
+tracking <- fromJSON("https://api.covidtracking.com/v1/states/daily.json")
 
 # select columns
 tracking <- tracking %>%
-  select(date, state, fips, positive, negative, hospitalizedIncrease, hospitalizedCurrently, totalTestResultsIncrease, positiveIncrease, negativeIncrease, deathIncrease, totalTestResults, death, inIcuCumulative, inIcuCurrently, onVentilatorCurrently, onVentilatorCumulative, positiveCasesViral)
+  select(date, state, fips, positive, negative, hospitalizedIncrease, hospitalizedCurrently, totalTestResultsIncrease, positiveIncrease, negativeIncrease, deathIncrease, totalTestResults, death, inIcuCumulative, inIcuCurrently, onVentilatorCurrently, onVentilatorCumulative, positiveCasesViral, totalTestEncountersViral)
 
 # deal with dates
-tracking$date <- as.character(tracking$date)
-tracking$date <- anydate(tracking$date)
+tracking$date <- anydate(as.character(tracking$date))
 
 # get rolling averages
 tracking <- tracking %>%
@@ -226,6 +243,7 @@ tracking <- tracking %>%
          pos_7d_avg = movavg(positiveIncrease, 7, type = "s"),
          death_7d_avg = movavg(deathIncrease, 7, type = "s"),
          totalTestResultsIncrease = ifelse(state == "MN" & date == "2020-07-31", 0, totalTestResultsIncrease),
+         totalTestResultsIncrease = ifelse(state == "NC" & date == "2020-08-12", 0, totalTestResultsIncrease),
          test_7d_avg = movavg(totalTestResultsIncrease, 7, type = "s"),
          hosp_7d_avg = movavg(hospitalizedCurrently, 7, type = "s"),
          totaltests_7d = test_7d_avg*7,
@@ -240,9 +258,15 @@ tracking <- tracking %>%
          tests_incr_week = ((test_7d_avg - lstwk_test_7d_avg)/lstwk_test_7d_avg),
          thiswk_pp = totalpos_7d / totaltests_7d,
          lstwk_pp = lag(thiswk_pp, n = 7),
-         death_7d_avg = ifelse(state == "NJ" & date >= "2020-06-25" & date <= "2020-07-01", (death_7d_avg - 264.85), death_7d_avg),
-         death_7d_avg = ifelse(state == "TX" & date >= "2020-07-27" & date <= "2020-08-02", (death_7d_avg - 90.14), death_7d_avg),
-         latest_pos_incr = last(pos_incr_week))
+         latest_pos_incr = last(pos_incr_week),
+         pp_incr_week = pct_positive - lstwk_pp,
+         latest_pp_incr = last(pp_incr_week),
+         
+         # 12/10 - hospitalizations
+         lag7_hosp = lag(hospitalizedCurrently, n = 7),
+         hosp_incr_week = (hospitalizedCurrently - lag7_hosp) / lag7_hosp,
+         hosp_incr_week = ifelse(is.na(hosp_incr_week), 0, hosp_incr_week),
+         hosp_incr_week = last(hosp_incr_week))
 
 # merge with NYT states
 covid_data_states <- right_join(covid_data_states, tracking, by = c("fips", "date"))
@@ -309,16 +333,6 @@ covid_data_states <- covid_data_states %>%
          state = if_else(state == "AS", "American Samoa", state),
          state = if_else(state == "GU", "Guam", state),
          state = if_else(state == "MP", "Northern Marianas", state))
-
-## state tiers
-covid_data_states <- covid_data_states %>%
-  group_by(state) %>%
-  mutate(pop = max(pop, na.rm = TRUE),
-        caseper1k = positive/pop*1000, 
-        deathper1k = deaths/pop*1000,
-        max_caseper1k = max(caseper1k),
-        state_tier = ifelse(max_caseper1k > 15, "Tier 1", ifelse((max_caseper1k > 10), "Tier 2", ifelse(max_caseper1k > 5, "Tier 3","Tier 4"))),
-        state_tier_moving = ifelse(caseper1k > 15, "15 or more cases per 1k", ifelse((caseper1k > 10), "10-15 cases per 1k", ifelse(caseper1k > 5, "5-9 cases per 1k","Less than 5 cases per 1k"))))
 
 ## has your state peaked?
 covid_data_states <- covid_data_states %>%
@@ -434,16 +448,16 @@ export(covid_data_states, "states-tableau.csv")
 # GOOGLE MOBILITY
 ######################################################
 
-mobility <- read_csv("Global_Mobility_Report.csv", col_types = cols(sub_region_2 = col_character()))
+mobility <- read_csv("Global_Mobility_Report.csv", col_types = cols(sub_region_2 = col_character())) %>%
 
-mobility <- mobility %>%
   filter(country_region == "United States") %>%
   rename(state = sub_region_1, county = sub_region_2) %>%
   mutate(county = ifelse(is.na(county), "All Counties", county),
          state = ifelse(is.na(state), "All States", state))
 
-states <- covid_data_states %>% select(state, state_abb)
-states <- distinct(states)
+states <- covid_data_states %>% 
+  select(state, state_abb) %>%
+  distinct()
 
 mobility <- left_join(mobility, states, by = "state")
 
