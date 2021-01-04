@@ -39,6 +39,7 @@ density_raw <- read_csv("https://raw.githubusercontent.com/juliachristensen/ps23
   row_to_names(1) %>%
   clean_names()
 
+
 ## population density 
 density <- density_raw %>%
   select(id, id2, target_geo_id2, geographic_area_2, population, area_in_square_miles_total_area) %>%

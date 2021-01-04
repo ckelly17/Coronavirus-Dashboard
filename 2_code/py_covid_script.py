@@ -6,7 +6,34 @@ import os
 import janitor as jn
 import datetime as dt
 
-os.chdir("/Users/conorkelly/Documents/COVID Dashboard")
+# mac
+# os.chdir("/Users/conorkelly/Documents/COVID Dashboard")
+
+# windows
+os.chdir("C:/Users/ckelly/Documents/Covid-Personal - Copy")
+
+######################################################
+# FUNCTIONS
+######################################################
+
+# 7-day averages
+def get_rolling_avg(df, new_var, using_var, group_var = 'state'):
+  x = df.copy()
+  x = (x
+    .assign(new_var = lambda x: x.groupby(group_var).rolling(7,7)[using_var].mean().reset_index(drop=True))
+    .rename(columns = {'new_var' : new_var}))
+  return(x)
+  
+# make sure fips codes have zero in front if need be
+def fix_fips(df, var):
+  x = df.copy()
+  v = var
+  x = (x
+    .assign(fips = lambda x: x[v].fillna(0)) # replace NA with 0
+    .assign(fips = lambda x: x[v].astype(int)) # get rid of float
+    .assign(fips = lambda x: x[v].astype(str)) # convert to string
+    .assign(fips = lambda x: x[v].str.pad(width=5, side='left', fillchar='0')))
+  return(x)
 
 ######################################################
 # COUNTIES
@@ -89,12 +116,7 @@ covid_data = (covid_data
 )
 
 ## make sure fips codes have zero in front if need be
-covid_data = (covid_data
-  .assign(fips = lambda x: x['fips'].fillna(0)) # replace NA with 0
-  .assign(fips = lambda x: x['fips'].astype(int)) # get rid of float
-  .assign(fips = lambda x: x['fips'].astype(str)) # convert to string
-  .assign(fips = lambda x: x['fips'].str.pad(width=5, side='left', fillchar='0'))
-)
+covid_data = fix_fips(covid_data, 'fips')
 
 ## calculate new cases and new deaths
 covid_data = (covid_data
@@ -102,17 +124,22 @@ covid_data = (covid_data
           new_cases = lambda x: np.where(pd.isna(x['cases_prior']), x['cases'], x['cases'] - x['cases_prior']),
           
           deaths_prior = lambda x: x.groupby('fips').shift(1)['deaths'],
-          new_deaths = lambda x: np.where(pd.isna(x['deaths_prior']), x['deaths'], x['deaths'] - x['deaths_prior']),
+          new_deaths = lambda x: np.where(pd.isna(x['deaths_prior']), x['deaths'], x['deaths'] - x['deaths_prior']))
           
   # 7-day averages
-          pos_7d_avg = lambda x: x.groupby('fips').rolling(7,7)['new_cases'].mean()
-            .reset_index(drop=True),
-            
-          death_7d_avg = lambda x: x.groupby('fips').rolling(7,7)['new_deaths'].mean()
-            .reset_index(drop=True))
+   .pipe(get_rolling_avg, 'pos_7d_avg', 'new_cases', 'fips')
+   .pipe(get_rolling_avg, 'death_7d_avg', 'new_deaths', 'fips')
 )
 
 ## elections
+cty_election_raw = pd.read_csv("https://raw.githubusercontent.com/tonmcg/US_County_Level_Election_Results_08-16/master/2016_US_County_Level_Presidential_Results.csv")
+
+cty_election = (cty_election_raw
+  .filter(['combined_fips', 'votes_dem', 'votes_gop'])
+  .rename(columns = {'combined_fips' : 'fips'})
+  .assign(result2016 = lambda x: np.where(x['votes_dem'] > x['votes_gop'], "Blue", "Red"))
+  .pipe(fix_fips, 'fips')
+)
 
 ## check uniqueness
 len(covid_data.drop_duplicates(['fips', 'date'])) / len(covid_data)
@@ -146,27 +173,17 @@ ctp = (ctp
        
    # sort by state and date for 7-day moving averages
   .sort_values(by = ['state', 'date'], ignore_index=True)
-
-  .assign(pos_7d_avg = lambda x: x.groupby('state').rolling(7,7)['positiveIncrease'].mean()
-            .reset_index(drop=True),
-            
-          test_7d_avg = lambda x: x.groupby('state').rolling(7,7)['totalTestResultsIncrease'].mean()
-            .reset_index(drop=True),
-            
-          death_7d_avg = lambda x: x.groupby('state').rolling(7,7)['deathIncrease'].mean()
-            .reset_index(drop=True),
-                  
-      # total tests and positives
-          totaltests_7d = lambda x: x.groupby('state').rolling(7,7)['totalTestResultsIncrease'].sum()
-            .reset_index(drop=True),
-            
-          totalpos_7d = lambda x: x.groupby('state').rolling(7,7)['positiveIncrease'].sum()
-            .reset_index(drop=True),
+  
+  # 7-day averages
+  .pipe(get_rolling_avg, 'pos_7d_avg', 'positiveIncrease')
+  .pipe(get_rolling_avg, 'test_7d_avg', 'totalTestResultsIncrease')
+  .pipe(get_rolling_avg, 'death_7d_avg', 'deathIncrease')
         
-      # 7-day percent positive
-          pct_pos_7d = lambda x: x['totalpos_7d'] / x['totaltests_7d'],
+  # 7-day percent positive
+  .assign(pct_pos_7d = lambda x: x['totalpos_7d'] / x['totaltests_7d'],
 
       # lagged values for deaths, cases, tests, and hospitalizations (one-week lag)
+      
           lstwk_death_7d_avg = lambda x: x.groupby('state').shift(7)['death_7d_avg'],
             
           lstwk_pos_7d_avg = lambda x: x.groupby('state').shift(7)['pos_7d_avg'],
@@ -178,6 +195,7 @@ ctp = (ctp
           change_hosp = lambda x: x.groupby('state')['hospitalizedCurrently'].diff(),
 
       # change in deaths, cases, and tests by week
+      
           deaths_incr_week = lambda x: (x['death_7d_avg'] - x['lstwk_death_7d_avg']) / x['lstwk_death_7d_avg'],
            
           pos_incr_week = lambda x: (x['pos_7d_avg'] - x['lstwk_pos_7d_avg']) / x['lstwk_pos_7d_avg'],
@@ -190,7 +208,7 @@ covid_data_states = ctp
 
 # deaths
 covid_data_states = (covid_data_states
-  .assign(date_temp = lambda x: x['date'].astype(int),
+  .assign(date_temp = lambda x: x['date'].astype(np.int64),
           max_deaths = lambda x: x.groupby('state')['death_7d_avg'].transform('max'),
           max_death_date = lambda x: np.where(x['death_7d_avg'] == x['max_deaths'], x['date_temp'], 0))
           
