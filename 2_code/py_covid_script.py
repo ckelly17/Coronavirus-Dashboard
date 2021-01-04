@@ -175,12 +175,19 @@ ctp = (ctp
   .sort_values(by = ['state', 'date'], ignore_index=True)
   
   # 7-day averages
-  .pipe(get_rolling_avg, 'pos_7d_avg', 'positiveIncrease')
+  .pipe(get_rolling_avg, new_var = 'pos_7d_avg', using_var = 'positiveIncrease')
   .pipe(get_rolling_avg, 'test_7d_avg', 'totalTestResultsIncrease')
   .pipe(get_rolling_avg, 'death_7d_avg', 'deathIncrease')
         
-  # 7-day percent positive
-  .assign(pct_pos_7d = lambda x: x['totalpos_7d'] / x['totaltests_7d'],
+  # 7-day totals
+  .assign(totaltests_7d = lambda x: x.groupby('state').rolling(7,7)['totalTestResultsIncrease'].sum()
+            .reset_index(drop=True),
+
+          totalpos_7d = lambda x: x.groupby('state').rolling(7,7)['positiveIncrease'].sum()
+            .reset_index(drop=True),
+
+   # 7-day percent positive   
+          pct_pos_7d = lambda x: x['totalpos_7d'] / x['totaltests_7d'],
 
       # lagged values for deaths, cases, tests, and hospitalizations (one-week lag)
       
