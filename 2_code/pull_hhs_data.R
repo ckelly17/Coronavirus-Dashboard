@@ -6,22 +6,25 @@ library(anytime)
 library(pracma)
 library(lubridate)
 
-setwd("C:/Users/ckelly/Documents/Covid-Personal - Copy")
-
 ###############################################################
 ## Pull testing data from HHS ---------------------------------
 ###############################################################
 
+start <- Sys.time()
+
 #https://healthdata.gov/dataset/covid-19-diagnostic-laboratory-testing-pcr-testing-time-series
 
-# API
-test_api <- fromJSON("https://opendata.arcgis.com/datasets/a72ecd7b4f4b4e1cbdcd8aed5be5159a_0.geojson")
+# API (deprecated)
+# test_api <- fromJSON("https://opendata.arcgis.com/datasets/a72ecd7b4f4b4e1cbdcd8aed5be5159a_0.geojson")
+# 
+# x <- fromJSON("https://healthdata.gov/api/3/action/package_show?id=c13c00e3-f3d0-4d49-8c43-bf600a6c0a0d&page=0")
+# x <- x[[3]]
+# x <- x$resources
+# x <- x[[1]]
+# url <- x$url
 
-x <- fromJSON("https://healthdata.gov/api/3/action/package_show?id=c13c00e3-f3d0-4d49-8c43-bf600a6c0a0d&page=0")
-x <- x[[3]]
-x <- x$resources
-x <- x[[1]]
-url <- x$url
+# new HHS beta
+url <- "https://beta.healthdata.gov/api/views/j8mb-icvb/rows.csv?accessType=DOWNLOAD"
 
 tests_raw <- read_csv(url)
 
@@ -61,8 +64,6 @@ test_df <- tests_wide %>%
   filter(date <= test_date) %>% # don't show the most recent day
   mutate(test_date = test_date - 0)
 
-write_csv(test_df, "hhs_tests.csv")
-
 ###############################################################
 ## Pull case and death data from CDC ----------------------------
 ###############################################################
@@ -81,9 +82,9 @@ case_death_df <- cd %>%
          state,
          date = submission_date) %>%
   group_by(state) %>%
+  mutate(date = mdy(date)) %>%
   arrange(state, date) %>%
-  mutate(date = mdy(date),
-         new_case_7d_avg = movavg(new_case, n = 7),
+  mutate(new_case_7d_avg = movavg(new_case, n = 7),
          new_death_7d_avg = movavg(new_death, n = 7)) %>%
   ungroup()
 
@@ -98,20 +99,21 @@ case_death_df <- case_death_df %>%
   mutate(case_death_date = max(date, na.rm = TRUE))
 
 
-
-
 ###############################################################
 ## Hospitalizations -----------------------------
 ###############################################################
 
-## timeseries
+## timeseries 
 
-x <- fromJSON("https://healthdata.gov/api/3/action/package_show?id=83b4a668-9321-4d8c-bc4f-2bef66c49050&page=0")
-x <- x[[3]]
-x <- x$resources
-x <- x[[1]]
-url <- x$url
+# deprecated
+# x <- fromJSON("https://healthdata.gov/api/3/action/package_show?id=83b4a668-9321-4d8c-bc4f-2bef66c49050&page=0")
+# x <- x[[3]]
+# x <- x$resources
+# x <- x[[1]]
+# url <- x$url
 
+## new HHS beta
+url <- "https://beta.healthdata.gov/api/views/jjp9-htie/rows.csv?accessType=DOWNLOAD"
 
 # read data
 hosp <- read_csv(url) %>%
@@ -123,22 +125,36 @@ hosp_df <- hosp %>%
          date,
          currently_hospitalized = inpatient_beds_used_covid,
          previous_day_admission_adult_covid_confirmed,
-         previous_day_admission_adult_covid_suspected) %>%
+         previous_day_admission_adult_covid_suspected,
+         previous_day_admission_pediatric_covid_confirmed,
+         previous_day_admission_pediatric_covid_suspected,
+         staffed_icu_adult_patients_confirmed_and_suspected_covid,
+         previous_day_admission_adult_covid_confirmed,
+         previous_day_admission_adult_covid_suspected,
+         previous_day_admission_pediatric_covid_suspected,
+         previous_day_admission_pediatric_covid_confirmed) %>%
   mutate(date = ymd(date),
-         new_admit = previous_day_admission_adult_covid_confirmed + previous_day_admission_adult_covid_suspected) %>%   
+         new_admit = previous_day_admission_adult_covid_confirmed + previous_day_admission_adult_covid_suspected +
+           previous_day_admission_pediatric_covid_suspected + previous_day_admission_pediatric_covid_confirmed) %>%   
   ungroup()
 
 # max date
 max_date <- max(hosp_df$date, na.rm = TRUE)
 
-## daily
-x <- fromJSON("https://healthdata.gov/api/3/action/package_show?id=7823dd0e-c8c4-4206-953e-c6d2f451d6ed&page=0")
-x <- x[[3]]
-x <- x$resources
-x <- x[[1]]
-url <- x$url
+# # daily (deprecated)
+# x <- fromJSON("https://healthdata.gov/api/3/action/package_show?id=7823dd0e-c8c4-4206-953e-c6d2f451d6ed&page=0")
+# x <- x[[3]]
+# x <- x$resources
+# x <- x[[1]]
+# url <- x$url
+# 
+# # read data
+# hosp_daily_raw <- read_csv(url) %>%
+#   clean_names()
 
-# read data
+## new HHS beta (daily)
+url <- "https://beta.healthdata.gov/api/views/6xf2-c3ie/rows.csv?accessType=DOWNLOAD"
+
 hosp_daily_raw <- read_csv(url) %>%
   clean_names()
 
@@ -146,7 +162,6 @@ hosp_daily <- hosp_daily_raw %>%
   select(state, currently_hospitalized = inpatient_beds_used_covid) %>%
   mutate(date = ymd(Sys.Date()) - 1)
         
-
 write_csv(hosp_daily, paste0("hosp_daily_backup/hosp_", ymd(Sys.Date() -1), ".csv"))
 
 # read in daily data
@@ -219,14 +234,35 @@ df <- df %>%
   arrange(state, date) %>%
   mutate(new_tests_7d_avg = movavg(new_tests, n = 7),
          new_pos_tests_7d_avg = movavg(new_tests_positive, n = 7),
-         pct_pos = ifelse(new_tests == 0, 0, new_tests_positive / new_tests))
+         pct_pos = ifelse(new_tests == 0, 0, new_tests_positive / new_tests)) %>%
+  ungroup()
 
-conn <- df %>% filter(state %in% "CT")
-cali <- df %>% filter(state %in% "CA")
+## hex map
+hex <- read_csv("hex.csv")
+
+df <- left_join(df, hex, by = "state")
 
 # write to disk
 write_csv(df, "federal_state.csv")
 
+# did it update?
+last_cdc <- df %>% filter(!is.na(new_case))
+last_test <- df %>% filter(!is.na(new_tests))
+last_hosp <- df %>% filter(!is.na(currently_hospitalized))
+
+# timing
+Sys.time() - start
+
+# current hosp value and yesterdays
+dailies %>%
+  filter(date >= max(date, na.rm = TRUE) - 5) %>%
+  group_by(date) %>%
+  summarize(currently_hospitalized = sum(currently_hospitalized, na.rm = TRUE))
+
+# updates
+print(paste0("Last HHS Hosp Date: ", max(last_hosp$date, na.rm = TRUE)))
+print(paste0("Last CDC Date: ", max(last_cdc$date, na.rm = TRUE)))
+print(paste0("Last Testing Date: ", max(last_test$date, na.rm = TRUE)))
 
 
 
