@@ -1,4 +1,6 @@
 
+
+
 library(jsonlite)
 library(tidyverse)
 library(janitor)
@@ -6,34 +8,18 @@ library(anytime)
 library(pracma)
 library(lubridate)
 
+start <- Sys.time()
+
 ###############################################################
 ## Pull testing data from HHS ---------------------------------
 ###############################################################
 
-start <- Sys.time()
-
 #https://healthdata.gov/dataset/covid-19-diagnostic-laboratory-testing-pcr-testing-time-series
-
-# API (deprecated)
-# test_api <- fromJSON("https://opendata.arcgis.com/datasets/a72ecd7b4f4b4e1cbdcd8aed5be5159a_0.geojson")
-# 
-# x <- fromJSON("https://healthdata.gov/api/3/action/package_show?id=c13c00e3-f3d0-4d49-8c43-bf600a6c0a0d&page=0")
-# x <- x[[3]]
-# x <- x$resources
-# x <- x[[1]]
-# url <- x$url
 
 # new HHS beta
 url <- "https://beta.healthdata.gov/api/views/j8mb-icvb/rows.csv?accessType=DOWNLOAD"
 
 tests_raw <- read_csv(url)
-
-# extract dataframe
-temp_df <- test_api[[4]]
-tests_raw1 <- temp_df$properties
-tests_raw2 <- tests_raw1 %>% 
-  as_tibble() %>%
-  clean_names()
 
 # clean
 tests <- tests_raw %>%
@@ -60,9 +46,7 @@ test_df <- tests_wide %>%
          pct_pos = new_tests_positive / new_tests,
          last_report_date = max(date, na.rm = TRUE)) %>%   
   ungroup()%>%
-  mutate(test_date = max(date, na.rm = TRUE)) %>%
-  filter(date <= test_date) %>% # don't show the most recent day
-  mutate(test_date = test_date - 0)
+  mutate(test_date = max(date, na.rm = TRUE))
 
 ###############################################################
 ## Pull case and death data from CDC ----------------------------
@@ -105,15 +89,8 @@ case_death_df <- case_death_df %>%
 
 ## timeseries 
 
-# deprecated
-# x <- fromJSON("https://healthdata.gov/api/3/action/package_show?id=83b4a668-9321-4d8c-bc4f-2bef66c49050&page=0")
-# x <- x[[3]]
-# x <- x$resources
-# x <- x[[1]]
-# url <- x$url
-
 ## new HHS beta
-url <- "https://beta.healthdata.gov/api/views/jjp9-htie/rows.csv?accessType=DOWNLOAD"
+url <- "https://beta.healthdata.gov/api/views/g62h-syeh/rows.csv?accessType=DOWNLOAD"
 
 # read data
 hosp <- read_csv(url) %>%
@@ -141,28 +118,30 @@ hosp_df <- hosp %>%
 # max date
 max_date <- max(hosp_df$date, na.rm = TRUE)
 
-# # daily (deprecated)
-# x <- fromJSON("https://healthdata.gov/api/3/action/package_show?id=7823dd0e-c8c4-4206-953e-c6d2f451d6ed&page=0")
-# x <- x[[3]]
-# x <- x$resources
-# x <- x[[1]]
-# url <- x$url
-# 
-# # read data
-# hosp_daily_raw <- read_csv(url) %>%
-#   clean_names()
+## daily
 
-## new HHS beta (daily)
+# new HHS beta (daily)
 url <- "https://beta.healthdata.gov/api/views/6xf2-c3ie/rows.csv?accessType=DOWNLOAD"
 
 hosp_daily_raw <- read_csv(url) %>%
   clean_names()
 
 hosp_daily <- hosp_daily_raw %>%
-  select(state, currently_hospitalized = inpatient_beds_used_covid) %>%
-  mutate(date = ymd(Sys.Date()) - 1)
+  select(state, currently_hospitalized = inpatient_beds_used_covid, reporting_cutoff_start,
+         previous_day_admission_adult_covid_confirmed,
+         previous_day_admission_adult_covid_suspected,
+         previous_day_admission_pediatric_covid_confirmed,
+         previous_day_admission_pediatric_covid_suspected,
+         staffed_icu_adult_patients_confirmed_and_suspected_covid,
+         previous_day_admission_adult_covid_confirmed,
+         previous_day_admission_adult_covid_suspected,
+         previous_day_admission_pediatric_covid_suspected,
+         previous_day_admission_pediatric_covid_confirmed) %>%
+  mutate(date = ymd(reporting_cutoff_start) + 4)
+
+daily_date <- max(hosp_daily$date, na.rm = TRUE)
         
-write_csv(hosp_daily, paste0("hosp_daily_backup/hosp_", ymd(Sys.Date() -1), ".csv"))
+write_csv(hosp_daily, paste0("hosp_daily_backup/hosp_", daily_date, ".csv"))
 
 # read in daily data
 files <- list.files("hosp_daily_backup")
@@ -248,12 +227,12 @@ write_csv(df, "federal_state.csv")
 # did it update?
 last_cdc <- df %>% filter(!is.na(new_case))
 last_test <- df %>% filter(!is.na(new_tests))
-last_hosp <- df %>% filter(!is.na(currently_hospitalized))
+last_hosp <- dailies %>% filter(!is.na(currently_hospitalized))
 
 # timing
 Sys.time() - start
 
-# current hosp value and yesterdays
+# check hosp values
 dailies %>%
   filter(date >= max(date, na.rm = TRUE) - 5) %>%
   group_by(date) %>%
@@ -263,8 +242,4 @@ dailies %>%
 print(paste0("Last HHS Hosp Date: ", max(last_hosp$date, na.rm = TRUE)))
 print(paste0("Last CDC Date: ", max(last_cdc$date, na.rm = TRUE)))
 print(paste0("Last Testing Date: ", max(last_test$date, na.rm = TRUE)))
-
-
-
-
 
