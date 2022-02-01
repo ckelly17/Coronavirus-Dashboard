@@ -154,7 +154,9 @@ nrow(distinct(cty_election))
 
 ## dates  
 covid_data <- covid_data %>%
-  mutate(max_date = max(date), one_week_date = max_date - 7, two_week_date = max_date - 14,
+  mutate(max_date = max(date), 
+         one_week_date = max_date - 7, 
+         two_week_date = max_date - 14,
          max_date_ind = ifelse(max_date == date, "Yes" , "No"),
          weekday = weekdays(date),
          max_weekday = weekdays(max_date),
@@ -441,6 +443,12 @@ ranking <- covid_data_states %>% filter(max_date_ind == "Yes") %>%
   select(state, cases_rank)
 
 covid_data_states <- left_join(covid_data_states, ranking , by = "state")
+
+# make sure population is always in
+covid_data_states <- covid_data_states %>%
+  group_by(state) %>%
+  mutate(pop = max(pop, na.rm = TRUE)) %>%
+  ungroup()
 
 ## export to CSV
 export(covid_data_states, "states-tableau.csv")

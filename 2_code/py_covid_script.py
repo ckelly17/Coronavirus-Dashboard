@@ -25,22 +25,24 @@ def get_rolling_avg(df, new_var, using_var, group_var = 'state'):
   return(x)
   
 # make sure fips codes have zero in front if need be
-def fix_fips(df, var):
+def fix_fips(df, var = 'fips'):
   x = df.copy()
-  v = var
   x = (x
-    .assign(fips = lambda x: x[v].fillna(0)) # replace NA with 0
-    .assign(fips = lambda x: x[v].astype(int)) # get rid of float
-    .assign(fips = lambda x: x[v].astype(str)) # convert to string
-    .assign(fips = lambda x: x[v].str.pad(width=5, side='left', fillchar='0')))
+    .assign(fips = lambda x: x[var].fillna(0)) # replace NA with 0
+    .assign(fips = lambda x: x[var].astype(int)) # get rid of float
+    .assign(fips = lambda x: x[var].astype(str)) # convert to string
+    .assign(fips = lambda x: x[var].str.pad(width=5, side='left', fillchar='0')))
   return(x)
 
 ######################################################
 # COUNTIES
 ######################################################
 
+## load data ----------------------------------------------------------------------
+
 # NYT counties
-nyt_covid = pd.read_csv("https://raw.githubusercontent.com/nytimes/covid-19-data/master/us-counties.csv")
+nyt_covid = (pd.read_csv("https://raw.githubusercontent.com/nytimes/covid-19-data/master/us-counties.csv")
+  .assign(date = lambda x: pd.to_datetime(x['date'].astype(str))))
 
 # regions
 regions = (pd.read_csv("https://raw.githubusercontent.com/cphalpert/census-regions/master/us%20census%20bureau%20regions%20and%20divisions.csv")
@@ -81,9 +83,18 @@ county_pop = (pd.read_csv("co-est2019-alldata.csv", encoding='ISO-8859-1', dtype
   .assign(fips = lambda x: pd.to_numeric(x['state'] + x['county']))
 )
 
-county_pop.tail()
+## elections
+cty_election_raw = pd.read_csv("https://raw.githubusercontent.com/tonmcg/US_County_Level_Election_Results_08-16/master/2016_US_County_Level_Presidential_Results.csv")
 
-## merge NYT data to other datasets
+cty_election = (cty_election_raw
+  .filter(['combined_fips', 'votes_dem', 'votes_gop'])
+  .rename(columns = {'combined_fips' : 'fips'})
+  .assign(result2016 = lambda x: np.where(x['votes_dem'] > x['votes_gop'], "Blue", "Red"))
+  .pipe(fix_fips)
+  .assign(fips = lambda x: pd.to_numeric(x['fips']))
+)
+
+## merge NYT data to other datasets ---------------------------------------------
 
 # population
 covid_data = nyt_covid.merge(county_pop, how = 'left', on = 'fips')
@@ -97,11 +108,15 @@ covid_data = covid_data.merge(regions, how = 'left', on = 'stname')
 # density
 covid_data = covid_data.merge(density, how = 'left', on = 'fips')
 
+# elections
+covid_data = covid_data.merge(cty_election, how = 'left', on = 'fips')
+
 # deal with unmerged obs
 covid_data = (covid_data
   .assign(ctyname = lambda x: np.where(pd.isna(x['ctyname']), x['county_y'], x['ctyname']),
           stname = lambda x: np.where(pd.isna(x['stname']), x['state_y'], x['stname']),
-          msaname = lambda x: np.where(x['ctyname'] == "New York City", "NEW YORK-NEWARK, NY-NJ-PA", x['msaname']))
+          msaname = lambda x: np.where(x['ctyname'] == "New York City", "NEW YORK-NEWARK, NY-NJ-PA", x['msaname']),
+          result2016 = lambda x: np.where(x['ctyname'] == "New York City", "Blue", x['result2016']))
 )
 
 # set population variable
@@ -115,34 +130,46 @@ covid_data = (covid_data
            'deathper1k', 'date', 'msaname', 'cbsaname', 'pop_density'])
 )
 
-## make sure fips codes have zero in front if need be
-covid_data = fix_fips(covid_data, 'fips')
+pd.crosstab(covid_data['stname'], "n", dropna=False)
 
-## calculate new cases and new deaths
+
+## make sure fips codes have zero in front if need be
+covid_data = fix_fips(covid_data)
+
+## calculate new cases and new deaths ----------------------------------------------------------
 covid_data = (covid_data
-  .assign(cases_prior = lambda x: x.groupby('fips').shift(1)['cases'],
+  .sort_values(by = ['ctyname', 'stname', 'date'], ignore_index=True)
+  .assign(cases_prior = lambda x: x.groupby(['stname', 'ctyname']).shift(1)['cases'],
           new_cases = lambda x: np.where(pd.isna(x['cases_prior']), x['cases'], x['cases'] - x['cases_prior']),
           
-          deaths_prior = lambda x: x.groupby('fips').shift(1)['deaths'],
+          deaths_prior = lambda x: x.groupby(['stname', 'ctyname']).shift(1)['deaths'],
           new_deaths = lambda x: np.where(pd.isna(x['deaths_prior']), x['deaths'], x['deaths'] - x['deaths_prior']))
           
   # 7-day averages
-   .pipe(get_rolling_avg, 'pos_7d_avg', 'new_cases', 'fips')
-   .pipe(get_rolling_avg, 'death_7d_avg', 'new_deaths', 'fips')
+   .pipe(get_rolling_avg, 'pos_7d_avg', 'new_cases', ['stname', 'ctyname'])
+   .pipe(get_rolling_avg, 'death_7d_avg', 'new_deaths', ['stname', 'ctyname'])
 )
 
-## elections
-cty_election_raw = pd.read_csv("https://raw.githubusercontent.com/tonmcg/US_County_Level_Election_Results_08-16/master/2016_US_County_Level_Presidential_Results.csv")
-
-cty_election = (cty_election_raw
-  .filter(['combined_fips', 'votes_dem', 'votes_gop'])
-  .rename(columns = {'combined_fips' : 'fips'})
-  .assign(result2016 = lambda x: np.where(x['votes_dem'] > x['votes_gop'], "Blue", "Red"))
-  .pipe(fix_fips, 'fips')
+## dates  
+covid_data = (covid_data
+  .assign(date_temp = lambda x: x['date'].astype(np.int64, errors = 'ignore'),
+          max_date = lambda x: x.groupby('fips')['date_temp'].transform('max'),
+          max_date_ind = lambda x: np.where(x['date_temp'] == x['max_date'], "Yes", "No"))
+  .assign(max_date = lambda x: pd.to_datetime(x['max_date'], unit = 'ns'),
+          one_week_date = lambda x: x['max_date'] - pd.Timedelta(days=7),
+          two_week_date = lambda x: x['max_date'] - pd.Timedelta(days=14))
 )
+
+covid_data['weekday'] = covid_data['date'].dt.day_name()
+covid_data['max_weekday'] = covid_data['max_date'].dt.day_name()
+covid_data['weekday_match'] = np.where(covid_data['weekday'] == covid_data['max_weekday'], "Yes", "No")
 
 ## check uniqueness
-len(covid_data.drop_duplicates(['fips', 'date'])) / len(covid_data)
+len(covid_data.drop_duplicates(['stname', 'ctyname', 'date'])) / len(covid_data)
+covid_data = covid_data.drop_duplicates(['stname', 'ctyname', 'date'])
+
+## export to CSV
+covid_data.to_csv("counties-tableau-python.csv", index=False)
 
 ######################################################
 # STATES
@@ -237,6 +264,8 @@ covid_data_states = (covid_data_states
   .assign(perc_decline_fr_pos_peak = lambda x: (x['pos_7d_avg'] - x['max_pos']) / x['max_pos'],
           days_since_peak_pos = lambda x: (x['date'] - x['max_pos_date']) / pd.Timedelta(days=1))
 )
+
+covid_data_states.to_csv("check_states.csv")
 
               
 
