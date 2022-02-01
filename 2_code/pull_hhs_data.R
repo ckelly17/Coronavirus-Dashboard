@@ -580,6 +580,7 @@ plot_pct <- function(state_list = unique(df$state), faceted = FALSE){
   #ggplotly(pct_plot)
 }
 
+source("/Users/conorkelly/Documents/COVID/update_github.R")
 
 ### plot
 plot_pct()
