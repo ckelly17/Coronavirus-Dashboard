@@ -371,7 +371,8 @@ pop <- pop_raw %>%
 
 df <- left_join(df, regions, by = "state") %>%
   mutate(region = ifelse(state %in% "NYC", "Northeast", region))
-df <- left_join(df, pop, by = "state")
+df <- left_join(df, pop, by = "state") %>%
+  mutate(population = ifelse(is.na(population), 0, population))
 
 # max date indicator
 df <- df %>%
@@ -436,8 +437,9 @@ df <- df %>%
          omi_pct = ifelse(date > ymd("2021-12-25") - 7, 0.77, omi_pct),
          omi_pct = ifelse(date > ymd("2022-01-01") - 7, .889, omi_pct),
          omi_pct = ifelse(date > ymd("2022-01-08") - 7, 0.962, omi_pct),
-         omi_pct = ifelse(date > ymd("2022-01-15") - 7, 0.994, omi_pct),
-         omi_pct = ifelse(date > ymd("2022-01-22") - 7, 0.999, omi_pct),
+         omi_pct = ifelse(date > ymd("2022-01-15") - 7, 0.978, omi_pct),
+         omi_pct = ifelse(date > ymd("2022-01-22") - 7, 0.998, omi_pct),
+         omi_pct = ifelse(date > ymd("2022-01-29") - 7, 0.999, omi_pct),
          
          omi_cases = new_case_7d_avg * omi_pct,
          delta_cases = new_case_7d_avg * (1 - omi_pct))
@@ -448,17 +450,21 @@ last_test <- df %>% filter(!is.na(new_tests))
 last_hosp <- hosp_df %>% filter(!is.na(currently_hospitalized))
 
 ## create plot
-plot_pct <- function(state_list = unique(df$state), faceted = FALSE){
+plot_pct <- function(filter_date, states = 'All', omi = FALSE){
 
-  all_states <- unique(df$state)
-  pct_state <- state_list
-  title_state <- ifelse(pct_state == all_states, "United States", pct_state)
+  title_state <- ifelse(states == 'All', "United States", states)
   my_title <- paste0(title_state, ": COVID-19 Cases, Hospitalizations, and Deaths")[1]
   
-  gg <- df %>%
+  if(states != 'All'){
+    gg <- df %>%
+      filter(state %in% states)
+  }else{
+    gg <- df
+  }
+  
+  gg <- gg %>%
     filter(date >= date("2020-04-01")) %>%
-    filter(state %in% pct_state) %>%
-    
+
     select(date, state, new_case_7d_avg, new_death_7d_avg, currently_hospitalized,
            staffed_icu_adult_patients_confirmed_and_suspected_covid) %>%
     group_by(state) %>%
@@ -467,13 +473,8 @@ plot_pct <- function(state_list = unique(df$state), faceted = FALSE){
     mutate(icu_7d = movavg(staffed_icu_adult_patients_confirmed_and_suspected_covid, 7)) %>%
     select(-staffed_icu_adult_patients_confirmed_and_suspected_covid)
   
-  if(faceted == TRUE){
-    gg <- gg %>%
-      group_by(date, state) 
-  } else {
     gg <- gg %>%
       group_by(date)
-  }
   
   gg <- gg %>%  
       summarize(new_death_7d_avg = sum(new_death_7d_avg, na.rm = TRUE),
@@ -487,49 +488,40 @@ plot_pct <- function(state_list = unique(df$state), faceted = FALSE){
   death_max <- max(gg$new_death_7d_avg[gg$date <= "2021-12-01"], na.rm = TRUE)
   icu_max <- max(gg$icu_7d[gg$date <= "2021-12-01"], na.rm = TRUE)
   
-  if(faceted == TRUE){
-    gg <- gg %>%
-      group_by(state) %>%
-      mutate(max_death_pct = new_death_7d_avg /max(gg$new_death_7d_avg[gg$date <= "2021-12-01"], na.rm = TRUE)) %>%
-      mutate(max_case_pct = new_case_7d_avg / max(gg$new_case_7d_avg[gg$date <= "2021-12-01"], na.rm = TRUE)) %>%
-      mutate(max_hosp_pct = currently_hospitalized / max(gg$currently_hospitalized[gg$date <= "2021-12-01"], na.rm = TRUE)) %>%
-      mutate(max_icu_pct = icu_7d / max(gg$icu_7d[gg$date <= "2021-12-01"], na.rm = TRUE)) %>%
-      ungroup()
-  } else{
-  
+  if(omi == FALSE){
   gg <- gg %>%  
     mutate(max_death_pct = new_death_7d_avg /max(gg$new_death_7d_avg[gg$date <= "2021-12-01"], na.rm = TRUE)) %>%
     mutate(max_case_pct = new_case_7d_avg / max(gg$new_case_7d_avg[gg$date <= "2021-12-01"], na.rm = TRUE)) %>%
     mutate(max_hosp_pct = currently_hospitalized / max(gg$currently_hospitalized[gg$date <= "2021-12-01"], na.rm = TRUE)) %>%
     mutate(max_icu_pct = icu_7d / max(gg$icu_7d[gg$date <= "2021-12-01"], na.rm = TRUE)) %>%
     ungroup()
+  } else{
+    gg <- gg %>%  
+      mutate(max_death_pct = new_death_7d_avg /max(gg$new_death_7d_avg[gg$date >= "2021-12-01"], na.rm = TRUE)) %>%
+      mutate(max_case_pct = new_case_7d_avg / max(gg$new_case_7d_avg[gg$date >= "2021-12-01"], na.rm = TRUE)) %>%
+      mutate(max_hosp_pct = currently_hospitalized / max(gg$currently_hospitalized[gg$date >= "2021-12-01"], na.rm = TRUE)) %>%
+      mutate(max_icu_pct = icu_7d / max(gg$icu_7d[gg$date >= "2021-12-01"], na.rm = TRUE)) %>%
+      ungroup()  
   }
+
   plot_df <- gg %>%
     rename(Cases = max_case_pct,
            Deaths = max_death_pct,
            Hospitalized = max_hosp_pct,
            ICU = max_icu_pct)
-  if(faceted == TRUE){
-    plot_df <- plot_df %>%
-      select(date, state, Cases, Deaths, Hospitalized, ICU)
-  } else {
-    plot_df <- plot_df %>%
+plot_df <- plot_df %>%
       select(date, Cases, Deaths, Hospitalized, ICU)
-  }
   
   plot_df <- plot_df %>%
     pivot_longer(cols = c(Deaths,
                           Cases,
                           Hospitalized,
                           ICU)) %>%
-    filter(!value == 0) # %>%
-    # group_by(name) %>%
-    # mutate(weekly_growth = (value - lag(value, n = 7)) / lag(value, n = 7)) 
-  print(names(plot_df))
-  
+    filter(!value == 0) 
+
   pct_plot <- plot_df %>%
     filter(year(date) > 2020) %>%
-    filter(date >= "2021-07-01") %>%
+    filter(date >= filter_date) %>%
     
     # plot
     ggplot() +
@@ -559,33 +551,18 @@ plot_pct <- function(state_list = unique(df$state), faceted = FALSE){
           text = element_text(size = 10),
           plot.caption = element_text(hjust = 0))
   
-  if(faceted == TRUE){
-    pct_plot <- pct_plot +
-      facet_wrap(~state) +
-      theme(axis.title.x=element_blank(),
-            axis.text.x=element_blank(),
-            axis.ticks.x=element_blank(),
-            
-            axis.title.y=element_blank(),
-            axis.text.y=element_blank(),
-            axis.ticks.y=element_blank())
-  }
-  
   fig <- ggplotly(pct_plot)
   htmlwidgets::saveWidget(fig, "pct_fig.html")
   browseURL("pct_fig.html")
-  
-  
-  #pct_plot
-  #ggplotly(pct_plot)
 }
+
+### plot
+plot_pct(filter_date = "2021-07-01", omi = FALSE)
+plot_pct(states = 'NY', omi = TRUE, filter_date = "2021-09-01")
 
 source("/Users/conorkelly/Documents/COVID/update_github.R")
 
-### plot
-plot_pct()
-
-# write to disk
+# write to disk 
 write_csv(df, "federal_state.csv")
 
 # check hosp values
