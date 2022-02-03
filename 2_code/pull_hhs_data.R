@@ -558,7 +558,7 @@ plot_df <- plot_df %>%
 
 ### plot
 plot_pct(filter_date = "2021-07-01", omi = FALSE)
-plot_pct(filter_date = "2021-09-01", omi = TRUE)
+plot_pct(states = 'NY', filter_date = "2021-09-01", omi = TRUE)
 
 source("/Users/conorkelly/Documents/COVID/update_github.R")
 
